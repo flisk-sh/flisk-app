@@ -823,7 +823,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         for (const project of projects) {
           if (jobs.get(project.id)?.state === "running") continue;
           const port = savedTiltPort(project.root) ?? 10350;
-          if ((await tiltOwner(port, project).catch(() => null)) !== project.root) continue;
+          if ((await tiltOwner(port, project).catch(() => null)) !== resolvedPath(project.root)) continue;
           if (listed.some((job) => job.project === project.id)) continue;
           const progress = await getProgress(project).catch(() => null);
           if (progress && (progress.percent < 100 || progress.errors.length)) {
