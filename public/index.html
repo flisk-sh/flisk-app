@@ -929,6 +929,9 @@
       @keyframes job-slide { 0% { left: -30%; } 100% { left: 100%; } }
       @media (prefers-reduced-motion: reduce) { .job-track i::after, .job-track.indeterminate i { animation: none; } }
       .project-row { grid-template-rows: auto; }
+
+      /* Keyboard focus ring for buttons whose own rules above reset box-shadow (the Start/Stop/Restart capsule, primary and quiet buttons). */
+      .row-actions .button:focus-visible, .button.primary:focus-visible, .button.quiet:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     </style>
   </head>
   <body>
