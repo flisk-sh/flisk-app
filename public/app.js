@@ -264,7 +264,7 @@ function renderOverview() {
     ${collapsible("summary", "Summary", `<div class="gauges">${overviewGauges(ready, resources)}</div>${tokenBarMarkup(sumTokens(projects.map((project) => project.tokens)), "Generated share (est.)")}`)}
     ${pinnedResourcesPanel()}
     <div id="notice" class="notice" role="status"></div>
-    ${visible.length ? collapsible("projects", "Projects", `<section class="project-table" aria-label="TDK projects">${rows}</section>`, `${visible.length} shown`) : `<div class="empty"><span class="empty-icon">⌕</span><strong>${projects.length ? "No matching projects" : "No TDK projects found"}</strong><p>${projects.length ? "Try another project name or folder path." : "TDK App searches common development folders. Add a location with --scan-root or initialize a project with tdk project."}</p></div>`}
+    ${visible.length ? collapsible("projects", "Projects", `<section class="project-table" aria-label="TDK projects">${rows}</section>`, `${visible.length} shown`) : `<div class="empty"><span class="empty-icon" aria-hidden="true">⌕</span><strong>${projects.length ? "No matching projects" : "No TDK projects found"}</strong><p>${projects.length ? "Try another project name or folder path." : "TDK App searches common development folders. Add a location with --scan-root or initialize a project with tdk project."}</p></div>`}
   </div>`;
 }
 
@@ -321,7 +321,7 @@ function renderDetail(project) {
     ${ports ? `<div class="ports">${ports}</div>` : ""}${conflictDetails}
     ${doctorSection(project)}
     ${configSection(project)}
-    ${collapsible("stacks", "Stacks & resources", `<div class="stack-list">${project.pending ? `<div class="skel-row"></div><div class="skel-row"></div>` : stackMarkup || `<div class="empty"><span class="empty-icon">T</span><strong>No resources found</strong><p>Initialize this folder with the TDK CLI to add resources.</p></div>`}</div>`, `${resources.length} total <span class="scope-note">Stop and Restart act on the whole project</span><button class="link-btn" type="button" data-action="new-stack" data-project="${esc(project.id)}">New stack</button><button class="link-btn" type="button" data-action="new-resource" data-project="${esc(project.id)}">Add resource</button>`)}
+    ${collapsible("stacks", "Stacks & resources", `<div class="stack-list">${project.pending ? `<div class="skel-row"></div><div class="skel-row"></div>` : stackMarkup || `<div class="empty"><span class="empty-icon" aria-hidden="true">T</span><strong>No resources found</strong><p>Initialize this folder with the TDK CLI to add resources.</p></div>`}</div>`, `${resources.length} total <span class="scope-note">Stop and Restart act on the whole project</span><button class="link-btn" type="button" data-action="new-stack" data-project="${esc(project.id)}">New stack</button><button class="link-btn" type="button" data-action="new-resource" data-project="${esc(project.id)}">Add resource</button>`)}
   </div>`;
 }
 
@@ -524,7 +524,7 @@ async function refreshData() {
       showNotice(`Could not refresh projects: ${error.message}. Showing the last known state.`, true);
       return;
     }
-    content.innerHTML = `<div class="content-inner"><div class="empty"><span class="empty-icon">!</span><strong>Couldn’t load projects</strong><p>${esc(error.message)}</p><button class="button" type="button" id="retry">Try again</button></div></div>`;
+    content.innerHTML = `<div class="content-inner"><div class="empty"><span class="empty-icon" aria-hidden="true">!</span><strong>Couldn’t load projects</strong><p>${esc(error.message)}</p><button class="button" type="button" id="retry">Try again</button></div></div>`;
     document.querySelector("#retry")?.addEventListener("click", refreshData);
   }
 }
