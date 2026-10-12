@@ -495,6 +495,8 @@
       .side-toggle { position: fixed; top: 6px; left: 86px; z-index: 20; width: 30px; height: 28px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--secondary); }
       .side-toggle:hover { background: var(--surface-alt); color: var(--label); }
       .side-toggle svg { width: 18px; height: 18px; }
+      /* The sidebar is hidden at 640px and below, so there is nothing for the toggle to open. */
+      @media (max-width: 640px) { .side-toggle { display: none; } }
       .app.side-hidden { grid-template-columns: 0 minmax(0, 1fr); }
       .app.side-hidden .sidebar { visibility: hidden; overflow: hidden; }
       .stack-head { min-height: 48px; }
