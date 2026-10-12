@@ -878,8 +878,10 @@ function toggleKey(key) {
 }
 document.querySelector("#side-toggle").addEventListener("click", () => toggleKey("side"));
 document.querySelector("#ws-toggle").addEventListener("click", () => toggleKey("ws"));
+// Below 641px the sidebar is not shown, so the shortcut leaves the saved layout alone.
+const sidebarShown = () => document.querySelector("#sidebar").getClientRects().length > 0;
 document.addEventListener("keydown", (event) => {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") { event.preventDefault(); toggleKey("side"); }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b" && sidebarShown()) { event.preventDefault(); toggleKey("side"); }
 });
 // Search shortcuts leave editing, composition and open dialogs to their own handlers.
 document.addEventListener("keydown", (event) => {
