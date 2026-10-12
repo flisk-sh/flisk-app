@@ -658,6 +658,8 @@
       /* Narrow windows: title takes the full width, actions wrap below it, labels never break mid-word */
       .detail-head { flex-wrap: wrap; gap: 14px 20px; align-items: flex-start; }
       .detail-title { flex: 1 1 320px; min-width: 0; }
+      /* Below 641px .detail-head is a column, where the 320px basis above would become the title's height. */
+      @media (max-width: 640px) { .detail-title { flex: 0 0 auto; } }
       .detail-actions { flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-start; min-width: 0; }
       .detail-title h1 { overflow-wrap: break-word; }
       .back-link, .link-btn, .button, .icon-btn, .panel-toggle, .stack-name, .row-actions { white-space: nowrap; }
