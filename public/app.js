@@ -310,7 +310,7 @@ function renderDetail(project) {
   document.querySelector("#breadcrumb").innerHTML = `<button class="back-link" type="button" data-view-overview>Projects</button><span>›</span><strong>${esc(project.name)}</strong>`;
   content.innerHTML = `<div class="content-inner">
     <div id="notice" class="notice" role="status"></div>
-    ${project.error ? `<div class="notice show error">Could not read status: ${esc(project.error)}</div>` : ""}
+    ${project.error ? `<div class="notice show error" role="alert">Could not read status: ${esc(project.error)}</div>` : ""}
     <div class="detail-head"><div class="detail-title"><button class="back-link" type="button" data-view-overview>← All projects</button><h1>${esc(project.name)}</h1><code class="detail-path">${esc(project.path)}</code></div>
       <div class="detail-actions">${actionSet(project)}<span class="toolbar-sep"></span>${iconButton("pin-project", pinnedProjects.has(project.id) ? "Unpin project" : "Pin project", { project: project.id, pinned: pinnedProjects.has(project.id) ? "1" : "0" })}${iconButton("open-project", "Open folder in Finder", { project: project.id })}${iconButton("open-terminal", "Open in Terminal", { project: project.id })}${menuButton([
         { action: "hide-project", label: hidden.has(project.id) ? "Unhide project" : "Hide project", data: { project: project.id } },
@@ -454,7 +454,7 @@ function doctorSection(project) {
   const result = doctors.get(project.id);
   const rerun = iconButton("doctor-refresh", "Run doctor again", { project: project.id });
   if (!result) return collapsible("doctor", "Doctor", `<div class="doctor-box">Running tdk doctor…</div>`, rerun);
-  if (result.error) return collapsible("doctor", "Doctor", `<div class="doctor-box"><div class="notice show error">Doctor could not finish: ${esc(result.error)}</div></div>`, rerun);
+  if (result.error) return collapsible("doctor", "Doctor", `<div class="doctor-box"><div class="notice show error" role="alert">Doctor could not finish: ${esc(result.error)}</div></div>`, rerun);
   const issues = result.checks.filter((check) => check.status === "fail" || check.status === "warning");
   const list = issues.length ? issues.map((check) => `<div class="doctor-item ${check.status}"><strong>${esc(check.name)}</strong><span>${esc(check.message)}</span>${check.fix ? `<div class="fix-row"><code>${esc(check.fix)}</code><button class="link-btn copy-btn" type="button" data-copy="${esc(check.fix)}">Copy</button></div>` : ""}</div>`).join("") : result.total ? `<div class="doctor-item pass"><strong>All ${result.total} checks passed</strong></div>` : `<div class="doctor-item"><strong>No checks ran</strong><span>tdk doctor returned no results. Run it again, or check the TDK CLI version.</span></div>`;
   const ask = issues.length ? inspectRow(TDK_INSPECT.doctorPrompt({ project: project.name, path: project.path, score: result.score, issues })) : "";
@@ -539,9 +539,11 @@ function applyActiveNotice() {
   if (!visible) {
     element.replaceChildren();
     element.classList.remove("show", "error");
+    element.setAttribute("role", "status");
     return;
   }
   element.replaceChildren();
+  element.setAttribute("role", activeNotice.isError ? "alert" : "status");
   const text = document.createElement("span");
   text.textContent = activeNotice.message;
   element.append(text);
@@ -577,7 +579,7 @@ function showNotice(message, isError = false, sticky = false, action = null, pro
   clearTimeout(noticeTimer);
   activeNotice = { message, isError, action, project: projectId };
   applyActiveNotice();
-  if (!sticky && !action) noticeTimer = setTimeout(dismissNotice, 9000);
+  if (!isError && !sticky && !action) noticeTimer = setTimeout(dismissNotice, 9000);
 }
 
 function applyBusy() {
