@@ -457,7 +457,7 @@ describe("doctor scores", () => {
     assert.equal(first.json.failed, 1);
     await raw(server, { path: "/api/doctor?project=a" });
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0], ["doctor", "--json", "--no-ping"]);
+    assert.deepEqual(calls[0], ["doctor", "--json"]);
     await raw(server, { path: "/api/doctor?project=a&refresh=1" });
     assert.equal(calls.length, 2);
   });

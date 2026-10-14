@@ -710,7 +710,9 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
     const entry = { at: Date.now(), pending: true };
     entry.promise = (async () => {
       try {
-        const data = readMachine(await runCommand(project, ["doctor", "--json", "--no-ping"], { timeoutMs: 45_000 }));
+        // Include running-service health probes so Doctor can report failed
+        // HTTP resources such as nats-http-bridge, not only host readiness.
+        const data = readMachine(await runCommand(project, ["doctor", "--json"], { timeoutMs: 45_000 }));
         return { ...summarizeDoctor(data), at: new Date().toISOString() };
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error), at: new Date().toISOString() };
