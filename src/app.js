@@ -327,7 +327,17 @@ export function tiltProgress(data) {
   return { percent, total, ready, building, starting, errors, step };
 }
 
-export function runTdk(project, args, { binary = process.env.TDK_BIN || "tdk", timeoutMs = 30_000, detached = false } = {}) {
+export function resolveTdkBinary(env = process.env) {
+  if (typeof env.TDK_BIN === "string" && env.TDK_BIN.trim()) return env.TDK_BIN.trim();
+  const pathEntries = (env.PATH ?? "").split(delimiter).filter(Boolean);
+  // Keep the app's native-first PATH for Colima/Lima, but prefer conventional
+  // package-manager installs for TDK over older copies in language-manager bins.
+  const preferredEntries = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".bun", "bin"), join(homedir(), ".local", "bin"), join(homedir(), ".n", "bin")];
+  const candidates = [...new Set([...preferredEntries, ...pathEntries])].map((entry) => join(entry, "tdk"));
+  return candidates.find((candidate) => existsSync(candidate)) ?? "tdk";
+}
+
+export function runTdk(project, args, { binary = "tdk", timeoutMs = 30_000, detached = false } = {}) {
   return new Promise((resolvePromise) => {
     let savedPort;
     try {
@@ -343,7 +353,8 @@ export function runTdk(project, args, { binary = process.env.TDK_BIN || "tdk", t
       PATH: [...new Set(pathEntries)].join(delimiter),
       ...(savedPort ? { TILT_PORT: String(savedPort) } : {}),
     };
-    const child = spawn(binary, args, {
+    const command = binary === "tdk" ? resolveTdkBinary(env) : binary;
+    const child = spawn(command, args, {
       cwd: project.root,
       env,
       stdio: ["ignore", "pipe", "pipe"],

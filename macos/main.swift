@@ -84,11 +84,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let preferredPath = ["\(home)/.n/bin", "\(home)/.bun/bin", "\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
         let inheritedPath = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
         var seenPathEntries = Set<String>()
-        environment["PATH"] = (preferredPath + inheritedPath).filter { seenPathEntries.insert($0).inserted }.joined(separator: ":")
+        let appPath = (preferredPath + inheritedPath).filter { seenPathEntries.insert($0).inserted }.joined(separator: ":")
+        environment["PATH"] = appPath
+        // The login shell sources user profiles, which can put Intel Homebrew
+        // ahead of the native Apple Silicon tools. Reapply this path after the
+        // login shell starts so Colima resolves the native limactl first.
+        environment["TDK_APP_PATH"] = appPath
         process.environment = environment
-        // Login shell so PATH (node, tdk) matches the user's terminal; GUI apps don't inherit it.
+        // Keep login-shell initialization for Node managers, then restore the
+        // app's native-first PATH before resolving node and starting the server.
         process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
-        process.arguments = ["-l", "-c", "exec node \"$1\" --no-open", "tdk-app", "\(resources)/app/src/cli.js"]
+        process.arguments = ["-l", "-c", "export PATH=\"$TDK_APP_PATH\"; unset TDK_APP_PATH; exec node \"$1\" --no-open", "tdk-app", "\(resources)/app/src/cli.js"]
         let out = Pipe(), err = Pipe(), stdin = Pipe()
         process.standardOutput = out
         process.standardError = err
