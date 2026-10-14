@@ -79,6 +79,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func startServer() {
         guard let resources = Bundle.main.resourcePath else { return fail("Missing bundle resources.") }
         let process = Process()
+        var environment = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let preferredPath = ["\(home)/.n/bin", "\(home)/.bun/bin", "\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin"]
+        let inheritedPath = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        var seenPathEntries = Set<String>()
+        environment["PATH"] = (preferredPath + inheritedPath).filter { seenPathEntries.insert($0).inserted }.joined(separator: ":")
+        process.environment = environment
         // Login shell so PATH (node, tdk) matches the user's terminal; GUI apps don't inherit it.
         process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
         process.arguments = ["-l", "-c", "exec node \"$1\" --no-open", "tdk-app", "\(resources)/app/src/cli.js"]

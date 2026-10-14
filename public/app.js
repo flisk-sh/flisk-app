@@ -601,7 +601,7 @@ async function fixDockerAndRetry(button) {
   if (fixingDocker) return;
   fixingDocker = true;
   const projectId = button.dataset.project;
-  showNotice("Restarting Docker Desktop… this usually takes 30–90 seconds. The start will continue automatically once Docker answers.", false, true, null, projectId);
+  showNotice("Starting Colima or Docker Desktop… the start will continue automatically once Docker answers.", false, true, null, projectId);
   try {
     const result = await api("/api/docker/restart", { method: "POST", body: "{}" });
     if (!result.ok) {
@@ -685,7 +685,7 @@ async function handleAction(button) {
       // Offer to fix Docker and then carry on with the original action.
       showNotice(error.lowDisk ? `${error.message}\n\n${DISK_COMMANDS}` : error.message, true, true, error.lowDisk
         ? { label: "Free up space…", run: openDiskCleanup }
-        : { label: "Restart Docker and continue", run: () => fixDockerAndRetry(button) }, project);
+        : { label: "Start runtime and continue", run: () => fixDockerAndRetry(button) }, project);
     } else showNotice(error.message, true, false, null, project);
   } finally {
     busy.delete(project);
