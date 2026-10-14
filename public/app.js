@@ -972,24 +972,40 @@ function fieldMarkup(field) {
 function openForm({ title, intro = "", fields, submit, validate, run }) {
   formDialog.innerHTML = `<form class="form" novalidate>
     <div class="modal-head"><h2 id="form-title">${esc(title)}</h2><button class="button quiet" type="button" data-close>${btnIcon("close")}Close</button></div>
-    <div class="form-body">${intro ? `<p class="form-intro">${esc(intro)}</p>` : ""}<div class="form-error" role="alert" tabindex="-1" hidden></div>${fields.map(fieldMarkup).join("")}<pre class="form-output" hidden></pre></div>
+    <div class="form-body">${intro ? `<p class="form-intro">${esc(intro)}</p>` : ""}<div id="form-error" class="form-error" role="alert" tabindex="-1" hidden></div>${fields.map(fieldMarkup).join("")}<pre class="form-output" hidden></pre></div>
     <div class="form-foot"><button class="button" type="button" data-close>${btnIcon("close")}Cancel</button><button class="button primary" type="submit">${esc(submit)}</button></div></form>`;
   const form = formDialog.querySelector("form");
   const errorBox = form.querySelector(".form-error");
   const output = form.querySelector(".form-output");
   const submitButton = form.querySelector('[type="submit"]');
   let finished = false;
+  // Marks the fields named by a validation problem. Each one points at the error box and gets a visible error border.
+  const markFields = (field) => {
+    for (const el of form.querySelectorAll('[aria-describedby="form-error"]')) el.removeAttribute("aria-invalid"), el.removeAttribute("aria-describedby");
+    if (!field) return;
+    for (const el of form.querySelectorAll(`[name="${field}"]`)) {
+      el.setAttribute("aria-invalid", "true");
+      el.setAttribute("aria-describedby", "form-error");
+    }
+  };
   // The error sits at the top of the form and takes focus, so it is read out and not missed below the fields.
-  const fail = (message) => {
+  const fail = (problem) => {
+    const { field, message } = typeof problem === "string" ? { message: problem } : problem;
     errorBox.textContent = message;
     errorBox.hidden = false;
     errorBox.focus();
+    markFields(field);
   };
+  // Editing a marked field clears its mark.
+  form.addEventListener("input", (event) => {
+    for (const el of form.querySelectorAll(`[name="${event.target.name}"][aria-describedby="form-error"]`)) el.removeAttribute("aria-invalid"), el.removeAttribute("aria-describedby");
+  });
   for (const close of form.querySelectorAll("[data-close]")) close.addEventListener("click", () => formDialog.close());
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (finished) return formDialog.close();
     errorBox.hidden = true;
+    markFields(null);
     const values = {};
     for (const field of fields) {
       if (field.type === "note") continue;
@@ -1025,6 +1041,8 @@ function openForm({ title, intro = "", fields, submit, validate, run }) {
 
 const portProblem = (value) => (!value || (Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 65535) ? "" : "Port must be a whole number from 1 to 65535.");
 const kebabProblem = (label, value) => (KEBAB.test(value) ? "" : `${label} must be lowercase letters, numbers and dashes, starting with a letter (for example my-api).`);
+// Wraps a message as the { field, message } problem that openForm marks on the named field.
+const at = (field, message) => (message ? { field, message } : "");
 const post = (url, body) => api(url, { method: "POST", body: JSON.stringify(body) });
 
 async function handleCrud(action, projectId, name, dataset) {
@@ -1071,7 +1089,7 @@ async function handleCrud(action, projectId, name, dataset) {
         { name: "port", label: "Port (optional)", type: "number", placeholder: "4000–5999", hint: "Leave empty to use the next free port. Valid ports are 1 to 65535." },
       ],
       submit: "Create resource",
-      validate: (v) => kebabProblem("Name", v.name) || (v.stack && kebabProblem("Stack", v.stack)) || (v.framework && kebabProblem("Framework", v.framework)) || portProblem(v.port) || "",
+      validate: (v) => at("name", kebabProblem("Name", v.name)) || at("stack", v.stack && kebabProblem("Stack", v.stack)) || at("framework", v.framework && kebabProblem("Framework", v.framework)) || at("port", portProblem(v.port)) || "",
       run: (v) => post("/api/resources", { project: projectId, name: v.name, type: v.type, stack: v.stack || undefined, framework: v.framework || undefined, port: v.port ? Number(v.port) : undefined }),
     });
     return true;
@@ -1085,7 +1103,7 @@ async function handleCrud(action, projectId, name, dataset) {
         { name: "resources", label: "Resources", type: "checks", options: (project.resources || []).map((resource) => resource.name) },
       ],
       submit: "Create stack",
-      validate: (v) => kebabProblem("Stack name", v.name) || (v.resources.length ? "" : "Pick at least one resource."),
+      validate: (v) => at("name", kebabProblem("Stack name", v.name)) || (v.resources.length ? "" : { field: "resources", message: "Pick at least one resource." }),
       run: (v) => post("/api/stacks", { project: projectId, name: v.name, resources: v.resources }),
     });
     return true;
@@ -1096,7 +1114,7 @@ async function handleCrud(action, projectId, name, dataset) {
       intro: `Currently in ${dataset.stack || "no stack"}. Pick an existing stack or type a new name.`,
       fields: [{ name: "stack", label: "Stack", value: dataset.stack || "", placeholder: "core", list: stackNames }],
       submit: "Move resource",
-      validate: (v) => kebabProblem("Stack", v.stack),
+      validate: (v) => at("stack", kebabProblem("Stack", v.stack)),
       run: (v) => post("/api/stacks", { project: projectId, name: v.stack, resources: [name] }),
     });
     return true;
@@ -1115,7 +1133,7 @@ async function openNewProject() {
       { name: "parent", label: "Create inside", value: info.defaultParent, list: info.roots, hint: "The folder the new project folder is created in. ~ means your home folder." },
     ],
     submit: "Create project",
-    validate: (v) => kebabProblem("Folder name", v.name) || (v.parent ? "" : "Choose a folder."),
+    validate: (v) => at("name", kebabProblem("Folder name", v.name)) || (v.parent ? "" : { field: "parent", message: "Choose a folder." }),
     run: async (v) => {
       const result = await post("/api/projects/create", { name: v.name, template: v.template || undefined, parent: v.parent });
       if (result.ok && result.project) selectedProjectId = result.project.id;
@@ -1177,7 +1195,7 @@ async function openDiskCleanup() {
       { name: "commands", type: "note", value: DISK_COMMANDS },
     ],
     submit: "Clean selected",
-    validate: (v) => (v.ids.length ? "" : "Select at least one item."),
+    validate: (v) => (v.ids.length ? "" : { field: "ids", message: "Select at least one item." }),
     run: async (v) => {
       const result = await post("/api/disk/clean", { ids: v.ids });
       const lines = result.results.map((entry) => `${entry.ok ? "✓" : "✗"} ${entry.label}${entry.ok ? "" : ` — ${entry.output}`}`);
