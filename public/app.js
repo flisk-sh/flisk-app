@@ -842,6 +842,19 @@ document.querySelector("#refresh").addEventListener("click", async (event) => {
   }
 });
 document.querySelector("#close-logs").addEventListener("click", () => document.querySelector("#logs").close());
+document.querySelector("#copy-logs").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
+  try {
+    await navigator.clipboard.writeText(document.querySelector("#log-body").textContent);
+    button.title = "Copied logs";
+    button.setAttribute("aria-label", "Copied logs");
+    setTimeout(() => { button.title = "Copy logs"; button.setAttribute("aria-label", "Copy logs"); }, 1500);
+  } catch {
+    button.title = "Could not copy logs";
+    button.setAttribute("aria-label", "Could not copy logs");
+    setTimeout(() => { button.title = "Copy logs"; button.setAttribute("aria-label", "Copy logs"); }, 2000);
+  }
+});
 
 // The switch lives at the top of the logs dialog. Turning it on or off applies to every panel.
 function renderLogAi() {
@@ -1213,7 +1226,7 @@ function configSection(project) {
   const when = status?.at ? new Date(status.at).toLocaleString() : "";
   const right = `<button class="link-btn" type="button" data-config="verify" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${busy && state?.running === "verify" ? "Checking…" : "Check now"}</button><button class="link-btn" type="button" data-config="migrate" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Migrate schema</button><button class="link-btn" type="button" data-config="regenerate" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Regenerate</button>`;
   const log = entries.length
-    ? entries.slice(0, 20).map((entry) => `<details class="log-entry ${entry.ok ? "ok" : "fail"}" data-key="log/${esc(entry.id ?? entry.at)}"${openDetails.has(`log/${entry.id ?? entry.at}`) ? " open" : ""}><summary><span class="log-when">${esc(new Date(entry.at).toLocaleString())}</span><span class="log-action">${esc(entry.action)}</span><span class="log-exit">exit ${entry.exitCode ?? "—"}</span><span class="log-ms">${(entry.durationMs / 1000).toFixed(1)}s</span></summary><pre>${esc(entry.output || "(no output)")}</pre>${entry.ok ? "" : inspectRow(TDK_INSPECT.runPrompt({ project: project.name, path: project.path, action: entry.action, exitCode: entry.exitCode, output: entry.output }))}</details>`).join("")
+    ? entries.slice(0, 20).map((entry) => `<details class="log-entry ${entry.ok ? "ok" : "fail"}" data-key="log/${esc(entry.id ?? entry.at)}"${openDetails.has(`log/${entry.id ?? entry.at}`) ? " open" : ""}><summary><span class="log-when">${esc(new Date(entry.at).toLocaleString())}</span><span class="log-action">${esc(entry.action)}</span><span class="log-exit">exit ${entry.exitCode ?? "—"}</span><span class="log-ms">${(entry.durationMs / 1000).toFixed(1)}s</span></summary><div class="log-output-row"><pre>${esc(entry.output || "(no output)")}</pre><button class="copy-icon" type="button" data-copy-log-entry aria-label="Copy run output" title="Copy run output"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12.5 4H5.8A1.8 1.8 0 0 0 4 5.8v8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>${entry.ok ? "" : inspectRow(TDK_INSPECT.runPrompt({ project: project.name, path: project.path, action: entry.action, exitCode: entry.exitCode, output: entry.output }))}</details>`).join("")
     : state?.error
       ? `<div class="notice show error">${esc(state.error)}</div>`
       : `<div class="log-empty">No config runs yet. Run a check to see its output here.</div>`;
@@ -1222,6 +1235,20 @@ function configSection(project) {
 }
 
 content.addEventListener("click", async (event) => {
+  const copyLog = event.target.closest("[data-copy-log-entry]");
+  if (copyLog) {
+    try {
+      await navigator.clipboard.writeText(copyLog.closest(".log-output-row").querySelector("pre").textContent);
+      copyLog.title = "Copied run output";
+      copyLog.setAttribute("aria-label", "Copied run output");
+      setTimeout(() => { copyLog.title = "Copy run output"; copyLog.setAttribute("aria-label", "Copy run output"); }, 1500);
+    } catch {
+      copyLog.title = "Could not copy run output";
+      copyLog.setAttribute("aria-label", "Could not copy run output");
+      setTimeout(() => { copyLog.title = "Copy run output"; copyLog.setAttribute("aria-label", "Copy run output"); }, 2000);
+    }
+    return;
+  }
   const button = event.target.closest("[data-config]");
   if (!button) return;
   const { config: operation, project } = button.dataset;
