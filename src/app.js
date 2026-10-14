@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, statfsSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { createTokenCache } from "./token-savings.js";
 
@@ -334,7 +334,15 @@ export function runTdk(project, args, { binary = process.env.TDK_BIN || "tdk", t
       const value = JSON.parse(readFileSync(join(project.root, PORT_FILE), "utf8"));
       if (Number.isInteger(value.port) && value.port > 0 && value.port <= 65535) savedPort = value.port;
     } catch {}
-    const env = { ...process.env, ...(savedPort ? { TILT_PORT: String(savedPort) } : {}) };
+    // GUI apps inherit a much smaller PATH than a terminal. TDK projects on
+    // macOS commonly install Bun under ~/.bun/bin, so expose that location to
+    // child CLI processes even when the app was launched from Finder/Launchpad.
+    const pathEntries = [join(homedir(), ".bun", "bin"), ...(process.env.PATH ?? "").split(delimiter)].filter(Boolean);
+    const env = {
+      ...process.env,
+      PATH: [...new Set(pathEntries)].join(delimiter),
+      ...(savedPort ? { TILT_PORT: String(savedPort) } : {}),
+    };
     const child = spawn(binary, args, {
       cwd: project.root,
       env,
@@ -470,7 +478,7 @@ export function summarizeDoctor(data) {
   };
 }
 
-export const DOCKER_UNAVAILABLE = "Docker isn't responding. Open Docker Desktop (or quit and reopen it if it is stuck), wait until it says it is running, then try again.";
+export const DOCKER_UNAVAILABLE = "The container runtime isn't responding. Start Colima or Docker Desktop, wait until Docker responds, then try again.";
 
 // A nearly full disk is the most common reason Docker Desktop's engine stops answering.
 export function lowDiskNote(path = homedir(), thresholdGb = 5) {
@@ -514,6 +522,32 @@ export async function restartDockerDesktop({ check = checkDocker, run = (command
   return { ok: false, message: "Docker Desktop was reopened but is still not responding. Check its window for errors." };
 }
 
+// Start the selected Colima runtime when a project uses its Docker context.
+// Other macOS Docker contexts keep the existing Docker Desktop recovery path.
+export async function restartContainerRuntime({ check = checkDocker, run = (command, args, options = {}) => runTdk({ root: homedir() }, args, { binary: command, timeoutMs: options.timeoutMs ?? 20_000 }), sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)), waitMs = 240_000, platform = process.platform, free = freeGb } = {}) {
+  if (platform !== "darwin") return { ok: false, message: "Starting the container runtime automatically is only supported on macOS. Start it manually, then try again." };
+  const context = await run("docker", ["context", "show"], { timeoutMs: 10_000 });
+  if (context.status === 0 && context.stdout.trim() === "colima") {
+    const gb = free();
+    if (gb < 2) return { ok: false, lowDisk: true, message: `Only ${gb.toFixed(1)} GB of disk is free, so Colima cannot start. Free at least 5 GB, then try again.` };
+    const current = await run("colima", ["status"], { timeoutMs: 10_000 });
+    if (current.status !== 0) {
+      const started = await run("colima", ["start"], { timeoutMs: waitMs });
+      if (started.status !== 0) {
+        const detail = (started.stderr || started.stdout || "").trim();
+        return { ok: false, message: `Could not start Colima.${detail ? ` ${detail}` : ""}` };
+      }
+    }
+    const deadline = Date.now() + waitMs;
+    while (Date.now() < deadline) {
+      if (await check().catch(() => false)) return { ok: true, message: "Colima is running again." };
+      await sleep(4000);
+    }
+    return { ok: false, message: "Colima was started but Docker is still not responding. Check Colima's logs, then try again." };
+  }
+  return restartDockerDesktop({ check, run, sleep, waitMs, platform, free });
+}
+
 export async function checkDocker(execute = runTdk) {
   const result = await execute({ root: homedir() }, ["info", "--format", "{{.ServerVersion}}"], { binary: process.env.DOCKER_BIN || "docker", timeoutMs: 8000 });
   return result.status === 0;
@@ -541,7 +575,7 @@ function findConflicts(snapshots) {
   return [...owners].filter(([, claimants]) => claimants.length > 1).map(([port, claimants]) => ({ port, claimants }));
 }
 
-export function startAppServer({ projects, projectsReady = Promise.resolve(), probe = probeCli, host = "127.0.0.1", port = 0, token = randomBytes(32).toString("hex"), runCommand = runTdk, openPath = openProjectPath, claudeDesktopApp = findClaudeDesktopApp, openAiApp = openInClaudeApp, dockerCheck = checkDocker, dockerRestart = restartDockerDesktop, prewarm = false, statePath = null }) {
+export function startAppServer({ projects, projectsReady = Promise.resolve(), probe = probeCli, host = "127.0.0.1", port = 0, token = randomBytes(32).toString("hex"), runCommand = runTdk, openPath = openProjectPath, claudeDesktopApp = findClaudeDesktopApp, openAiApp = openInClaudeApp, dockerCheck = checkDocker, dockerRestart = restartContainerRuntime, prewarm = false, statePath = null }) {
   if (host !== "127.0.0.1") throw new Error("TDK App can only bind to 127.0.0.1.");
   let capability = null;
   let updating = false;
