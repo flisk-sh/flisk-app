@@ -493,11 +493,15 @@ function applyCliCapability() {
   banner.className = "notice show error cli-banner";
   banner.setAttribute("role", "alert");
   const canUpdate = cli?.state === "unsupported" || cli?.state === "failed";
-  const update = canUpdate ? ` <button class="button" type="button" id="update-cli" ${updateState.running ? "disabled" : ""}>${updateState.running ? "Updating…" : "Update TDK CLI"}</button>` : "";
+  const update = canUpdate ? ` <button class="button" type="button" id="update-cli" ${updateState.running ? "disabled" : ""}>${updateState.running ? "Updating…" : "Update all TDK installs"}</button>` : "";
   const outcome = updateState.message ? `<div class="update-result">${esc(updateState.message)}</div>` : "";
   const link = cli?.installUrl ? ` <a href="${esc(cli.installUrl)}" target="_blank" rel="noreferrer noopener">Install or update instructions</a>` : "";
   const message = cli ? cli.message : "TDK App could not check the TDK CLI, so Start, Stop and Restart are off. Status and logs still work. This check runs again on the next refresh.";
-  banner.innerHTML = `${esc(message)}${link}${update}${outcome}`;
+  const copyText = [message, cli?.installUrl ? `Install/update instructions: ${cli.installUrl}` : "", updateState.message]
+    .filter(Boolean)
+    .join("\n\n");
+  const copy = `<button class="copy-icon cli-copy" type="button" data-copy="${esc(copyText)}" aria-label="Copy CLI error details" title="Copy CLI error details"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12.5 4H5.8A1.8 1.8 0 0 0 4 5.8v8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>`;
+  banner.innerHTML = `${copy}${esc(message)}${link}${update}${outcome}`;
   banner.querySelector("#update-cli")?.addEventListener("click", updateCli);
   const inner = content.querySelector(".content-inner") || content;
   inner.prepend(banner);
@@ -803,8 +807,14 @@ content.addEventListener("click", (event) => {
   const copy = event.target.closest("[data-copy]");
   if (!copy) return;
   navigator.clipboard.writeText(copy.dataset.copy).then(() => {
-    copy.textContent = "Copied";
-    setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+    if (copy.classList.contains("copy-icon")) {
+      copy.title = "Copied CLI error details";
+      copy.setAttribute("aria-label", "Copied CLI error details");
+      setTimeout(() => { copy.title = "Copy CLI error details"; copy.setAttribute("aria-label", "Copy CLI error details"); }, 1500);
+    } else {
+      copy.textContent = "Copied";
+      setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+    }
   }, () => showNotice("Could not copy. Select the command and copy it by hand.", true));
 });
 
