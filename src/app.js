@@ -269,10 +269,25 @@ const isArgName = (value) => typeof value === "string" && value.length > 0 && va
 
 function readMachine(result) {
   let envelope;
+  const stdout = String(result.stdout ?? "");
   try {
-    envelope = JSON.parse(result.stdout);
+    envelope = JSON.parse(stdout);
   } catch {
-    envelope = null;
+    // Some TDK versions print a diagnostic line before their compact JSON
+    // envelope. Preserve the structured result instead of treating the whole
+    // response as invalid JSON.
+    const lines = stdout.trim().split(/\r?\n/);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index].trim();
+      if (!line.startsWith("{")) continue;
+      try {
+        const candidate = JSON.parse(line);
+        if (candidate && typeof candidate === "object" && !Array.isArray(candidate) && ("data" in candidate || "errors" in candidate)) {
+          envelope = candidate;
+          break;
+        }
+      } catch {}
+    }
   }
   if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
     throw new Error(String(result.stderr ?? "").trim() || (result.status == null ? "TDK did not respond (timed out or could not start)." : `TDK returned invalid JSON (exit ${result.status}).`));
