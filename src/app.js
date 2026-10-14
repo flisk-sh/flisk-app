@@ -327,14 +327,22 @@ export function tiltProgress(data) {
   return { percent, total, ready, building, starting, errors, step };
 }
 
-export function resolveTdkBinary(env = process.env) {
-  if (typeof env.TDK_BIN === "string" && env.TDK_BIN.trim()) return env.TDK_BIN.trim();
+let selectedTdkBinary = null;
+
+function tdkBinaryCandidates(env = process.env) {
   const pathEntries = (env.PATH ?? "").split(delimiter).filter(Boolean);
   // Keep the app's native-first PATH for Colima/Lima, but prefer conventional
   // package-manager installs for TDK over older copies in language-manager bins.
   const preferredEntries = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".bun", "bin"), join(homedir(), ".local", "bin"), join(homedir(), ".n", "bin")];
-  const candidates = [...new Set([...preferredEntries, ...pathEntries])].map((entry) => join(entry, "tdk"));
-  return candidates.find((candidate) => existsSync(candidate)) ?? "tdk";
+  return [...new Set([...preferredEntries, ...pathEntries])]
+    .map((entry) => join(entry, "tdk"))
+    .filter((candidate) => existsSync(candidate));
+}
+
+export function resolveTdkBinary(env = process.env) {
+  if (typeof env.TDK_BIN === "string" && env.TDK_BIN.trim()) return env.TDK_BIN.trim();
+  if (selectedTdkBinary && existsSync(selectedTdkBinary)) return selectedTdkBinary;
+  return tdkBinaryCandidates(env)[0] ?? "tdk";
 }
 
 export function runTdk(project, args, { binary = "tdk", timeoutMs = 30_000, detached = false } = {}) {
@@ -414,11 +422,28 @@ const LIFECYCLE_COMMANDS = ["up", "down"];
 export async function probeCli(execute, cwd = process.cwd()) {
   const probe = { root: cwd };
   const base = { minVersion: MIN_CLI_VERSION, installUrl: INSTALL_URL, version: null };
-  // All probes are read-only, so run them together: about 3x faster than one after another.
-  const [versionResult, ...helps] = await Promise.all([
-    execute(probe, ["--version"], { timeoutMs: 10_000 }),
-    ...LIFECYCLE_COMMANDS.map((command) => execute(probe, [command, "--help"], { timeoutMs: 10_000 })),
-  ]);
+  // A machine can have stale TDK copies earlier on PATH. Try installed
+  // candidates until one answers, then use that same binary for all commands.
+  const candidates = typeof process.env.TDK_BIN === "string" && process.env.TDK_BIN.trim()
+    ? [process.env.TDK_BIN.trim()]
+    : tdkBinaryCandidates();
+  let binary = candidates[0] ?? "tdk";
+  let versionResult = { status: null, stdout: "", stderr: "" };
+  for (const candidate of candidates.length ? candidates : [binary]) {
+    const result = await execute(probe, ["--version"], { binary: candidate, timeoutMs: 10_000 });
+    if (result.status === 0) {
+      binary = candidate;
+      versionResult = result;
+      selectedTdkBinary = candidate;
+      break;
+    }
+    versionResult = result;
+  }
+  const helps = versionResult.status === 0
+    ? await Promise.all(LIFECYCLE_COMMANDS.map((command) =>
+      execute(probe, [command, "--help"], { binary, timeoutMs: 10_000 }),
+    ))
+    : [];
   if (versionResult.status !== 0) {
     const missing = /ENOENT/.test(versionResult.stderr);
     return {
@@ -746,7 +771,10 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         if (updating) return sendJson(response, 409, { error: "An update is already running." });
         updating = true;
         try {
-          const result = await runCommand({ root: homedir() }, ["upgrade", "--yes"], { timeoutMs: 300_000 });
+          let result = await runCommand({ root: homedir() }, ["upgrade", "--yes", "--all"], { timeoutMs: 300_000 });
+          if (result.status !== 0 && /unknown option.*--all|unknown option.*'--all'/i.test(`${result.stdout}\n${result.stderr}`)) {
+            result = await runCommand({ root: homedir() }, ["upgrade", "--yes"], { timeoutMs: 300_000 });
+          }
           capability = null;
           const cli = await cliCapability();
           return sendJson(response, 200, { ok: result.status === 0, output: `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim().slice(-2000), cli });
