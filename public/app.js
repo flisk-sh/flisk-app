@@ -80,6 +80,9 @@ const ICONS = {
   eye: '<path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5z" stroke="currentColor" stroke-width="1.4" fill="none"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/>',
   layers: '<path d="m10 3 7.5 4L10 11 2.5 7zM2.5 10.5 10 14.5l7.5-4M2.5 13.5 10 17.5l7.5-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>',
   package: '<path d="M10 2.8 16.5 6v8L10 17.2 3.5 14V6zM3.5 6 10 9.4 16.5 6M10 9.4v7.8" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>',
+  copy: '<rect x="7" y="6.5" width="9.5" height="9.5" rx="2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M4.5 13V5.5a1.5 1.5 0 0 1 1.5-1.5H13.5" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round"/>',
+  sparkle: '<path d="M10 2.8c.4 3.1 1.6 4.3 4.7 4.7-3.1.4-4.3 1.6-4.7 4.7-.4-3.1-1.6-4.3-4.7-4.7 3.1-.4 4.3-1.6 4.7-4.7zM15 12.5c.2 1.3.7 1.8 2 2-1.3.2-1.8.7-2 2-.2-1.3-.7-1.8-2-2 1.3-.2 1.8-.7 2-2z" fill="currentColor"/>',
+  close: '<path d="M5 5l10 10M15 5 5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
 };
 const ACTION_ICONS = { start: "start", stop: "stop", restart: "restart", logs: "logs", "open-project": "folder", "open-terminal": "terminal", "new-project": "plus", "open-existing-project": "folder", "new-resource": "plus", "new-stack": "stack", "move-resource": "move", "config-regenerate": "regenerate", "config-verify": "verify", "hide-project": "hide", "pin-project": "pin", "pin-resource": "pin", "doctor-refresh": "restart" };
 
@@ -97,6 +100,11 @@ function actionButton(action, project, scope = "project", name = "", label = act
 }
 
 // Borderless, icon-only toolbar button (tooltip carries the label).
+// Icon for a text button. Every button in the app uses the same icon set as the icon buttons.
+function btnIcon(name) {
+  return ICONS[name] ? `<svg class="btn-icon" viewBox="0 0 20 20" aria-hidden="true">${ICONS[name]}</svg>` : "";
+}
+
 function iconButton(action, title, data = {}) {
   const attrs = Object.entries(data).map(([key, value]) => `data-${key}="${esc(value)}"`).join(" ");
   return `<button class="icon-btn" type="button" data-action="${esc(action)}" data-iconed="1" ${attrs} title="${esc(title)}" aria-label="${esc(title)}"><svg viewBox="0 0 20 20" aria-hidden="true">${ICONS[ACTION_ICONS[action]] || ""}</svg></button>`;
@@ -263,7 +271,7 @@ function renderOverview() {
 
   content.innerHTML = `<div class="content-inner">
     <div class="page-head"><div><h1>Projects</h1><p>${projects.length} local workspace${projects.length === 1 ? "" : "s"} discovered across your development folders.</p>${hiddenCount ? `<div class="hidden-note">${hiddenCount} hidden · <button type="button" data-action="toggle-hidden">${showHidden ? "Hide them again" : "Show them"}</button></div>` : ""}</div>
-      <div class="head-actions"><button class="button" type="button" data-action="build-with-ai">Build with AI</button><button class="button" type="button" data-action="open-existing-project">Open project</button><button class="button primary" type="button" data-action="new-project">New project</button></div></div>
+      <div class="head-actions"><button class="button" type="button" data-action="build-with-ai">${btnIcon("sparkle")}Build with AI</button><button class="button" type="button" data-action="open-existing-project">${btnIcon("folder")}Open project</button><button class="button primary" type="button" data-action="new-project">${btnIcon("plus")}New project</button></div></div>
     <div class="narrow-search"><input id="content-search" type="search" title="Filter projects (/ or Ctrl/Cmd+F)" placeholder="Filter projects" aria-label="Filter projects" value="${esc(searchTerm)}" autocomplete="off"></div>
     ${collapsible("summary", "Summary", `<div class="gauges">${overviewGauges(ready, resources)}</div>${tokenBarMarkup(sumTokens(projects.map((project) => project.tokens)), "Generated share (est.)")}`)}
     ${pinnedResourcesPanel()}
@@ -326,7 +334,7 @@ function renderDetail(project) {
     ${doctorSection(project)}
     ${configSection(project)}
     ${toolsSection(project)}
-    ${collapsible("stacks", "Stacks & resources", `<div class="stack-list">${project.pending ? `<div class="skel-row"></div><div class="skel-row"></div>` : stackMarkup || `<div class="empty"><span class="empty-icon" aria-hidden="true">T</span><strong>No resources found</strong><p>Initialize this folder with the TDK CLI to add resources.</p></div>`}</div>`, `${resources.length} total <span class="scope-note">Stop and Restart act on the whole project</span><button class="link-btn" type="button" data-action="new-stack" data-project="${esc(project.id)}">New stack</button><button class="link-btn" type="button" data-action="new-resource" data-project="${esc(project.id)}">Add resource</button>`)}
+    ${collapsible("stacks", "Stacks & resources", `<div class="stack-list">${project.pending ? `<div class="skel-row"></div><div class="skel-row"></div>` : stackMarkup || `<div class="empty"><span class="empty-icon" aria-hidden="true">T</span><strong>No resources found</strong><p>Initialize this folder with the TDK CLI to add resources.</p></div>`}</div>`, `${resources.length} total <span class="scope-note">Stop and Restart act on the whole project</span><button class="link-btn" type="button" data-action="new-stack" data-project="${esc(project.id)}">${btnIcon("stack")}New stack</button><button class="link-btn" type="button" data-action="new-resource" data-project="${esc(project.id)}">${btnIcon("plus")}Add resource</button>`)}
   </div>`;
 }
 
@@ -461,7 +469,7 @@ function doctorSection(project) {
   if (!result) return collapsible("doctor", "Doctor", `<div class="doctor-box">Running tdk doctor…</div>`, rerun);
   if (result.error) return collapsible("doctor", "Doctor", `<div class="doctor-box"><div class="notice show error" role="alert">Doctor could not finish: ${esc(result.error)}</div></div>`, rerun);
   const issues = result.checks.filter((check) => check.status === "fail" || check.status === "warning");
-  const list = issues.length ? issues.map((check) => `<div class="doctor-item ${check.status}"><strong>${esc(check.name)}</strong><span>${esc(check.message)}</span>${check.fix ? `<div class="fix-row"><code>${esc(check.fix)}</code><button class="link-btn copy-btn" type="button" data-copy="${esc(check.fix)}">Copy</button></div>` : ""}</div>`).join("") : result.total ? `<div class="doctor-item pass"><strong>All ${result.total} checks passed</strong></div>` : `<div class="doctor-item"><strong>No checks ran</strong><span>tdk doctor returned no results. Run it again, or check the TDK CLI version.</span></div>`;
+  const list = issues.length ? issues.map((check) => `<div class="doctor-item ${check.status}"><strong>${esc(check.name)}</strong><span>${esc(check.message)}</span>${check.fix ? `<div class="fix-row"><code>${esc(check.fix)}</code><button class="link-btn copy-btn" type="button" data-copy="${esc(check.fix)}">${btnIcon("copy")}Copy</button></div>` : ""}</div>`).join("") : result.total ? `<div class="doctor-item pass"><strong>All ${result.total} checks passed</strong></div>` : `<div class="doctor-item"><strong>No checks ran</strong><span>tdk doctor returned no results. Run it again, or check the TDK CLI version.</span></div>`;
   const ask = issues.length ? inspectRow(TDK_INSPECT.doctorPrompt({ project: project.name, path: project.path, score: result.score, issues })) : "";
   return collapsible("doctor", "Doctor", `<div class="doctor-box"><div class="doctor-summary">${scoreMarkup(project, 84)}<div class="doctor-meta"><strong>${result.score ?? "—"} / 100</strong>${stackedBar(result)}<div class="legend"><span><i class="pass"></i>${result.passed} passed</span><span><i class="warning"></i>${result.warnings} warnings</span><span><i class="fail"></i>${result.failed} failed</span></div></div></div>${list}${ask}</div>`, rerun);
 }
@@ -498,7 +506,7 @@ function applyCliCapability() {
   banner.className = "notice show error cli-banner";
   banner.setAttribute("role", "alert");
   const canUpdate = cli?.state === "unsupported" || cli?.state === "failed";
-  const update = canUpdate ? ` <button class="button" type="button" id="update-cli" ${updateState.running ? "disabled" : ""}>${updateState.running ? "Updating…" : "Update all TDK installs"}</button>` : "";
+  const update = canUpdate ? ` <button class="button" type="button" id="update-cli" ${updateState.running ? "disabled" : ""}>${btnIcon("restart")}${updateState.running ? "Updating…" : "Update all TDK installs"}</button>` : "";
   const outcome = updateState.message ? `<div class="update-result">${esc(updateState.message)}</div>` : "";
   const link = cli?.installUrl ? ` <a href="${esc(cli.installUrl)}" target="_blank" rel="noreferrer noopener">Install or update instructions</a>` : "";
   const message = cli ? cli.message : "TDK App could not check the TDK CLI, so Start, Stop and Restart are off. Status and logs still work. This check runs again on the next refresh.";
@@ -533,7 +541,7 @@ async function refreshData() {
       showNotice(`Could not refresh projects: ${error.message}. Showing the last known state.`, true);
       return;
     }
-    content.innerHTML = `<div class="content-inner"><div class="empty"><span class="empty-icon" aria-hidden="true">!</span><strong>Couldn’t load projects</strong><p>${esc(error.message)}</p><button class="button" type="button" id="retry">Try again</button></div></div>`;
+    content.innerHTML = `<div class="content-inner"><div class="empty"><span class="empty-icon" aria-hidden="true">!</span><strong>Couldn’t load projects</strong><p>${esc(error.message)}</p><button class="button" type="button" id="retry">${btnIcon("restart")}Try again</button></div></div>`;
     document.querySelector("#retry")?.addEventListener("click", refreshData);
   }
 }
@@ -963,9 +971,9 @@ function fieldMarkup(field) {
 
 function openForm({ title, intro = "", fields, submit, validate, run }) {
   formDialog.innerHTML = `<form class="form" novalidate>
-    <div class="modal-head"><h2 id="form-title">${esc(title)}</h2><button class="button quiet" type="button" data-close>Close</button></div>
+    <div class="modal-head"><h2 id="form-title">${esc(title)}</h2><button class="button quiet" type="button" data-close>${btnIcon("close")}Close</button></div>
     <div class="form-body">${intro ? `<p class="form-intro">${esc(intro)}</p>` : ""}<div class="form-error" role="alert" tabindex="-1" hidden></div>${fields.map(fieldMarkup).join("")}<pre class="form-output" hidden></pre></div>
-    <div class="form-foot"><button class="button" type="button" data-close>Cancel</button><button class="button primary" type="submit">${esc(submit)}</button></div></form>`;
+    <div class="form-foot"><button class="button" type="button" data-close>${btnIcon("close")}Cancel</button><button class="button primary" type="submit">${esc(submit)}</button></div></form>`;
   const form = formDialog.querySelector("form");
   const errorBox = form.querySelector(".form-error");
   const output = form.querySelector(".form-output");
@@ -1149,7 +1157,7 @@ async function openBuildWithAi() {
   } catch {}
   const links = TDK_INSPECT.providerLinks(prompt).map((link) => `<a class="ai-btn" href="${esc(link.href)}" target="_blank" rel="noreferrer noopener" style="--ai: ${link.color}" title="Open ${esc(link.label)} with the TDK starter prompt"><svg viewBox="0 0 24 24" aria-hidden="true">${link.logo}</svg>${esc(link.label)}</a>`).join("");
   formDialog.innerHTML = `<div class="form">
-    <div class="modal-head"><h2 id="form-title">Build with AI</h2><button class="button quiet" type="button" data-close>Close</button></div>
+    <div class="modal-head"><h2 id="form-title">Build with AI</h2><button class="button quiet" type="button" data-close>${btnIcon("close")}Close</button></div>
     <div class="form-body"><p class="form-intro">Pick an AI chat. It opens with a prompt that explains TDK's commands and project layout, then asks what you want to build.</p><div class="ai-row">${links}</div></div>
   </div>`;
   for (const close of formDialog.querySelectorAll("[data-close]")) close.addEventListener("click", () => formDialog.close());
@@ -1324,7 +1332,7 @@ function configSection(project) {
   const status = state?.status ?? null;
   const entries = state?.entries ?? [];
   const when = status?.at ? new Date(status.at).toLocaleString() : "";
-  const right = `<button class="link-btn" type="button" data-config="verify" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${busy && state?.running === "verify" ? "Checking…" : "Check now"}</button><button class="link-btn" type="button" data-config="migrate" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Migrate schema</button><button class="link-btn" type="button" data-config="regenerate" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Regenerate</button>`;
+  const right = `<button class="link-btn" type="button" data-config="verify" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${btnIcon("verify")}${busy && state?.running === "verify" ? "Checking…" : "Check now"}</button><button class="link-btn" type="button" data-config="migrate" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${btnIcon("layers")}Migrate schema</button><button class="link-btn" type="button" data-config="regenerate" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${btnIcon("regenerate")}Regenerate</button>`;
   const log = entries.length
     ? entries.slice(0, 20).map((entry) => `<details class="log-entry ${entry.ok ? "ok" : "fail"}" data-key="log/${esc(entry.id ?? entry.at)}"${openDetails.has(`log/${entry.id ?? entry.at}`) ? " open" : ""}><summary><span class="log-when">${esc(new Date(entry.at).toLocaleString())}</span><span class="log-action">${esc(entry.action)}</span><span class="log-exit">exit ${entry.exitCode ?? "—"}</span><span class="log-ms">${(entry.durationMs / 1000).toFixed(1)}s</span></summary><div class="log-output-row"><pre>${esc(entry.output || "(no output)")}</pre><button class="copy-icon" type="button" data-copy-log-entry aria-label="Copy run output" title="Copy run output"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="6" width="9" height="11" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12.5 4H5.8A1.8 1.8 0 0 0 4 5.8v8.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button></div>${entry.ok ? "" : inspectRow(TDK_INSPECT.runPrompt({ project: project.name, path: project.path, action: entry.action, exitCode: entry.exitCode, output: entry.output }))}</details>`).join("")
     : state?.error
