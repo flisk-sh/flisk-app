@@ -499,6 +499,12 @@ export async function probeCli(execute, cwd = process.cwd()) {
   return { ...base, version, state: "supported", lifecycle: true, message: null };
 }
 
+// Older TDK CLIs omit directUrl. A bring-your-own app runs on the host at its declared port, so that is the address.
+export function directUrlFromPort(resource) {
+  const port = resource?.port;
+  return resource?.type === "bring-your-own" && Number.isInteger(port) && port > 0 && port <= 65535 ? `http://localhost:${port}` : null;
+}
+
 async function projectStatus(project, execute) {
   const status = readMachine(await execute(project, ["status", "--json", "--tilt"]));
   let services = [];
@@ -512,7 +518,7 @@ async function projectStatus(project, execute) {
     project,
     resources: objects(status.resources).map((resource) => ({
       ...resource,
-      url: safeUrl(urls.get(resource.name) ?? resource.url),
+      url: safeUrl(urls.get(resource.name) ?? resource.url ?? resource.directUrl ?? directUrlFromPort(resource)),
     })),
     stacks: objects(status.stacks),
     ports: objects(status.ports),
