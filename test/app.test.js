@@ -149,7 +149,7 @@ describe("TDK App local server", () => {
       stderr: "",
       stdout: JSON.stringify({
         data: args[0] === "status"
-          ? { resources: [{ name: "api", stack: "shop", type: "backend", status: "ready" }], stacks: [{ name: "shop" }], ports: [{ name: "api", hostPort: 8080 }], tilt: { resources: [{}] } }
+          ? { resources: [{ name: "api", stack: "shop", type: "backend", status: "ready" }], stacks: [{ name: "shop" }], ports: [{ name: "api", hostPort: 8080 }], tilt: { resources: { items: [{ metadata: { name: "api" } }] } } }
           : { services: [{ name: "api", url: "http://localhost:8080" }] },
       }),
     });

@@ -503,8 +503,18 @@ async function projectStatus(project, execute) {
     })),
     stacks: objects(status.stacks),
     ports: objects(status.ports),
-    tiltRunning: Boolean(status.tilt && typeof status.tilt === "object" && status.tilt.resources),
+    tiltRunning: isOwnTiltRunning(status.tilt, objects(status.resources)),
   };
+}
+
+// `tdk status --tilt` reports whichever Tilt answers on the shared UI port, and that Tilt can belong to another
+// project. A project is running only when that Tilt has a resource named like one of the project's own resources.
+export function isOwnTiltRunning(tilt, ownResources) {
+  if (!tilt || typeof tilt !== "object") return false;
+  const raw = tilt.resources;
+  const items = Array.isArray(raw) ? raw : raw && typeof raw === "object" && Array.isArray(raw.items) ? raw.items : [];
+  const tiltNames = new Set(items.map((item) => item?.metadata?.name ?? item?.name).filter((name) => typeof name === "string"));
+  return ownResources.some((resource) => typeof resource.name === "string" && tiltNames.has(resource.name));
 }
 
 // Turns `tdk doctor --json` data into a 0-100 score: pass = 1, warning = 0.5, fail = 0, skipped ignored.
