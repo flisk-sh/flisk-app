@@ -76,6 +76,10 @@ const ICONS = {
   verify: '<path d="M10 2.8 16 5v4.6c0 3.6-2.4 6-6 7.6-3.6-1.6-6-4-6-7.6V5z M7.2 10l2 2 3.6-3.8" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round" stroke-linecap="round"/>',
   pin: '<path d="M12.5 3.5 16.5 7.5 13.6 9.2 11.2 13.3 6.7 8.8 10.8 6.4z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/><path d="M8.9 11.1 4 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
   hide: '<path d="M3 10s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z M4 4l12 12" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+  wrench: '<path d="M13.5 3.5a3.5 3.5 0 0 0-3.3 4.6L4.6 14.7a1.6 1.6 0 0 0 2.3 2.3l6.6-5.6a3.5 3.5 0 0 0 4.6-3.3l-2.2 1.1-2.2-.6-.6-2.2z" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>',
+  eye: '<path d="M2.5 10s2.7-5 7.5-5 7.5 5 7.5 5-2.7 5-7.5 5-7.5-5-7.5-5z" stroke="currentColor" stroke-width="1.4" fill="none"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/>',
+  layers: '<path d="m10 3 7.5 4L10 11 2.5 7zM2.5 10.5 10 14.5l7.5-4M2.5 13.5 10 17.5l7.5-4" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>',
+  package: '<path d="M10 2.8 16.5 6v8L10 17.2 3.5 14V6zM3.5 6 10 9.4 16.5 6M10 9.4v7.8" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linejoin="round"/>',
 };
 const ACTION_ICONS = { start: "start", stop: "stop", restart: "restart", logs: "logs", "open-project": "folder", "open-terminal": "terminal", "new-project": "plus", "open-existing-project": "folder", "new-resource": "plus", "new-stack": "stack", "move-resource": "move", "config-regenerate": "regenerate", "config-verify": "verify", "hide-project": "hide", "pin-project": "pin", "pin-resource": "pin", "doctor-refresh": "restart" };
 
@@ -1253,15 +1257,15 @@ function driftBadge(status) {
 // One table drives every button. Adding a tool means adding one row here and one entry in TOOL_COMMANDS on the server.
 const TOOL_GROUPS = [
   { title: "Doctor & Docker", buttons: [
-    { tool: "doctor-fix-preview", label: "Preview fixes" },
-    { tool: "doctor-fix-apply", label: "Apply fixes", danger: true, confirm: "Apply doctor repairs? This removes unused Docker networks and leftover doctor probes for this project." },
+    { tool: "doctor-fix-preview", label: "Preview fixes", icon: "eye" },
+    { tool: "doctor-fix-apply", label: "Apply fixes", icon: "wrench", danger: true, confirm: "Apply doctor repairs? This removes unused Docker networks and leftover doctor probes for this project." },
   ] },
   { title: "Start & stop", buttons: [
-    { tool: "up-preview", label: "Preview start" },
-    { tool: "down-preview", label: "Preview stop" },
+    { tool: "up-preview", label: "Preview start", icon: "eye" },
+    { tool: "down-preview", label: "Preview stop", icon: "eye" },
   ] },
   { title: "Runtime", buttons: [
-    { tool: "runtime-check-assets", label: "Check bundled assets" },
+    { tool: "runtime-check-assets", label: "Check bundled assets", icon: "package" },
   ] },
 ];
 const INFRA_SERVICE_OPTIONS = ["monitoring", "elk", "debezium", "golden_image", "verdaccio"];
@@ -1270,11 +1274,12 @@ const toolState = new Map(); // projectId -> { title, ok, output, argv, running 
 function toolsSection(project) {
   const state = toolState.get(project.id);
   const busy = Boolean(state?.running);
-  const button = (spec) => `<button class="link-btn${spec.danger ? " danger-link" : ""}" type="button" data-tool="${esc(spec.tool)}" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${esc(spec.label)}</button>`;
+  const icon = (name) => `<svg class="btn-icon" viewBox="0 0 20 20" aria-hidden="true">${ICONS[name] || ""}</svg>`;
+  const button = (spec) => `<button class="link-btn${spec.danger ? " danger-link" : ""}" type="button" data-tool="${esc(spec.tool)}" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${icon(spec.icon)}${esc(spec.label)}</button>`;
   const groups = TOOL_GROUPS.map((group) => `<div class="tool-group"><span class="tool-title">${esc(group.title)}</span><div class="tool-buttons">${group.buttons.map(button).join("")}</div></div>`).join("");
   const infra = `<div class="tool-group"><span class="tool-title">Infrastructure</span><div class="tool-buttons"><select data-infra aria-label="Infrastructure service" ${busy ? "disabled" : ""}>${INFRA_SERVICE_OPTIONS.map((service) => `<option value="${esc(service)}">${esc(service)}</option>`).join("")}</select>` +
-    `<button class="link-btn" type="button" data-tool="infra-enable" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Enable</button>` +
-    `<button class="link-btn danger-link" type="button" data-tool="infra-disable" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Disable</button></div></div>`;
+    `<button class="link-btn" type="button" data-tool="infra-enable" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${icon("layers")}Enable</button>` +
+    `<button class="link-btn danger-link" type="button" data-tool="infra-disable" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${icon("hide")}Disable</button></div></div>`;
   const result = state && !state.running
     ? `<div class="tool-result ${state.ok ? "ok" : "fail"}"><strong>${esc(state.title)}: ${state.ok ? "finished" : "reported a problem"}</strong><code>${esc(state.argv)}</code><pre>${esc(state.output || "No output.")}</pre></div>`
     : state?.running ? `<div class="log-empty">Running ${esc(state.title)}…</div>` : "";
