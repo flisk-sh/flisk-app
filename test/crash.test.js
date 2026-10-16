@@ -28,7 +28,7 @@ const projects = [
   { id: "b", name: "b", root: "/projects/b" },
 ];
 const okEnvelope = (data) => ({ status: 0, stderr: "", stdout: JSON.stringify({ data }) });
-const goodStatus = okEnvelope({ resources: [{ name: "api", stack: "s", type: "backend", status: "ready" }], stacks: [{ name: "s" }], ports: [{ name: "api", hostPort: 8080 }], tilt: { resources: [{}] } });
+const goodStatus = okEnvelope({ resources: [{ name: "api", stack: "s", type: "backend", status: "ready" }], stacks: [{ name: "s" }], ports: [{ name: "api", hostPort: 8080 }], tilt: { resources: { items: [{ metadata: { name: "api" } }] } } });
 
 async function boot(options = {}) {
   const started = await startAppServer({
