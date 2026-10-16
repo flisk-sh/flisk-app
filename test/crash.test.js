@@ -395,7 +395,7 @@ describe("CLI self-update endpoint", () => {
     assert.equal(response.status, 200);
     assert.equal(response.json.ok, true);
     assert.equal(response.json.cli.lifecycle, true);
-    assert.deepEqual(calls, [["upgrade", "--yes"]]);
+    assert.deepEqual(calls, [["upgrade", "--yes", "--all"]]);
   });
 
   it("reports failure without throwing when the upgrade fails or the CLI is missing", async () => {
