@@ -175,6 +175,31 @@ describe("TDK App local server", () => {
     assert.deepEqual(body.projects[0].conflicts, [{ port: 8080, claimants: ["a (api)", "b (api)"] }]);
   });
 
+  it("gives bring-your-own resources a direct endpoint from directUrl or their declared port", async () => {
+    const runCommand = async () => ({
+      status: 0,
+      stderr: "",
+      stdout: JSON.stringify({
+        data: {
+          resources: [
+            { name: "sourcing-api", stack: "sourcing", type: "bring-your-own", port: 4002, url: null, directUrl: "http://localhost:4002", status: "unknown" },
+            { name: "searxng", stack: "sourcing", type: "bring-your-own", port: 4005, url: null, status: "unknown" },
+            { name: "jobs", stack: "sourcing", type: "worker", port: null, url: null, status: "unknown" },
+          ],
+          stacks: [],
+          ports: [],
+        },
+      }),
+    });
+    const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand });
+    const origin = new URL(started.url).origin;
+    const body = await (await fetch(`${origin}/api/projects`, { headers: { "x-tdk-token": started.token } })).json();
+    const [api, search, jobs] = body.projects[0].resources;
+    assert.equal(api.url, "http://localhost:4002/");
+    assert.equal(search.url, "http://localhost:4005/");
+    assert.equal(jobs.url, null);
+  });
+
   it("routes scoped actions through the installed TDK CLI", async () => {
     const project = { id: "a", name: "a", root: "/projects/a" };
     const calls = [];
