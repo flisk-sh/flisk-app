@@ -91,10 +91,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // login shell starts so Colima resolves the native limactl first.
         environment["TDK_APP_PATH"] = appPath
         process.environment = environment
-        // Keep login-shell initialization for Node managers, then restore the
-        // app's native-first PATH before resolving node and starting the server.
+        // Start a login shell so Node managers (nvm, bun) initialize their PATH.
         process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
-        process.arguments = ["-l", "-c", "export PATH=\"$TDK_APP_PATH\"; unset TDK_APP_PATH; exec node \"$1\" --no-open", "tdk-app", "\(resources)/app/src/cli.js"]
+        // Resolve node while the login shell's PATH is still loaded (nvm, bun, Homebrew all
+        // set it there), then exec that absolute path. Exit 127 means node was not found.
+        let script = """
+        NODE=$(command -v node) || { echo "node not found on PATH; install Node.js 22.12+ or add it to ~/.zprofile" >&2; exit 127; }
+        export PATH="$TDK_APP_PATH:$PATH"; unset TDK_APP_PATH
+        exec "$NODE" "$1" --no-open
+        """
+        process.arguments = ["-l", "-c", script, "tdk-app", "\(resources)/app/src/cli.js"]
         let out = Pipe(), err = Pipe(), stdin = Pipe()
         process.standardOutput = out
         process.standardError = err
