@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { commonProjectScanRoots, discoverProjectRoot, discoverProjects, findClaudeDesktopApp, normalizeState, probeCli, resolveProjects, startAppServer } from "../src/app.js";
+import { TOOL_COMMANDS, commonProjectScanRoots, discoverProjectRoot, discoverProjects, findClaudeDesktopApp, normalizeState, probeCli, resolveProjects, startAppServer } from "../src/app.js";
 
 const servers = [];
 const tempDirs = [];
@@ -206,6 +206,36 @@ describe("TDK App local server", () => {
     assert.equal((await send({ project: "a", operation: "stop", stack: "shop" })).status, 400);
     assert.equal((await send({ project: "a", operation: "restart", resources: ["api"] })).status, 400);
     assert.equal(calls.length, 0);
+  });
+});
+
+describe("tools panel", () => {
+  it("runs only the fixed argv for each allowlisted tool and rejects anything else", async () => {
+    const calls = [];
+    const runCommand = async (_project, args) => { calls.push(args); return { status: 0, stderr: "", stdout: "ok" }; };
+    const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand });
+    const origin = new URL(started.url).origin;
+    const send = (body) => fetch(`${origin}/api/tools`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify(body) });
+    assert.equal((await send({ project: "a", tool: "doctor-fix-preview" })).status, 200);
+    assert.equal((await send({ project: "a", tool: "doctor-fix-apply" })).status, 200);
+    assert.equal((await send({ project: "a", tool: "up-preview" })).status, 200);
+    assert.equal((await send({ project: "a", tool: "down-preview" })).status, 200);
+    assert.equal((await send({ project: "a", tool: "runtime-check-assets" })).status, 200);
+    assert.deepEqual(calls.splice(0), [
+      ["doctor", "--fix", "--dry-run"],
+      ["doctor", "--fix", "--yes"],
+      ["up", "--dry-run"],
+      ["down", "--dry-run"],
+      ["runtime", "--check-assets"],
+    ]);
+    assert.equal((await send({ project: "a", tool: "infra-enable", service: "elk" })).status, 200);
+    assert.equal((await send({ project: "a", tool: "infra-disable", service: "verdaccio" })).status, 200);
+    assert.deepEqual(calls.splice(0), [["config", "enable-infra", "elk"], ["config", "disable-infra", "verdaccio"]]);
+    assert.equal((await send({ project: "a", tool: "rm -rf" })).status, 400);
+    assert.equal((await send({ project: "a", tool: "infra-enable", service: "--force" })).status, 400);
+    assert.equal((await send({ project: "missing", tool: "up-preview" })).status, 400);
+    assert.equal(calls.length, 0);
+    assert.ok(Object.keys(TOOL_COMMANDS).every((key) => Array.isArray(TOOL_COMMANDS[key].argv)));
   });
 });
 

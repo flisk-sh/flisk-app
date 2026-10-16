@@ -321,6 +321,7 @@ function renderDetail(project) {
     ${ports ? `<div class="ports">${ports}</div>` : ""}${conflictDetails}
     ${doctorSection(project)}
     ${configSection(project)}
+    ${toolsSection(project)}
     ${collapsible("stacks", "Stacks & resources", `<div class="stack-list">${project.pending ? `<div class="skel-row"></div><div class="skel-row"></div>` : stackMarkup || `<div class="empty"><span class="empty-icon" aria-hidden="true">T</span><strong>No resources found</strong><p>Initialize this folder with the TDK CLI to add resources.</p></div>`}</div>`, `${resources.length} total <span class="scope-note">Stop and Restart act on the whole project</span><button class="link-btn" type="button" data-action="new-stack" data-project="${esc(project.id)}">New stack</button><button class="link-btn" type="button" data-action="new-resource" data-project="${esc(project.id)}">Add resource</button>`)}
   </div>`;
 }
@@ -1247,6 +1248,68 @@ function driftBadge(status) {
   // The last check exited non-zero. Its output in the log says whether files drifted or the check itself failed.
   return status.ok ? `<span class="badge good">In sync</span>` : `<span class="badge bad" title="Last check exited with code ${esc(status.exitCode ?? "unknown")}. See the log.">Not in sync</span>`;
 }
+
+// ---------- Tools panel ----------
+// One table drives every button. Adding a tool means adding one row here and one entry in TOOL_COMMANDS on the server.
+const TOOL_GROUPS = [
+  { title: "Doctor & Docker", buttons: [
+    { tool: "doctor-fix-preview", label: "Preview fixes" },
+    { tool: "doctor-fix-apply", label: "Apply fixes", danger: true, confirm: "Apply doctor repairs? This removes unused Docker networks and leftover doctor probes for this project." },
+  ] },
+  { title: "Start & stop", buttons: [
+    { tool: "up-preview", label: "Preview start" },
+    { tool: "down-preview", label: "Preview stop" },
+  ] },
+  { title: "Runtime", buttons: [
+    { tool: "runtime-check-assets", label: "Check bundled assets" },
+  ] },
+];
+const INFRA_SERVICE_OPTIONS = ["monitoring", "elk", "debezium", "golden_image", "verdaccio"];
+const toolState = new Map(); // projectId -> { title, ok, output, argv, running }
+
+function toolsSection(project) {
+  const state = toolState.get(project.id);
+  const busy = Boolean(state?.running);
+  const button = (spec) => `<button class="link-btn${spec.danger ? " danger-link" : ""}" type="button" data-tool="${esc(spec.tool)}" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>${esc(spec.label)}</button>`;
+  const groups = TOOL_GROUPS.map((group) => `<div class="tool-group"><span class="tool-title">${esc(group.title)}</span><div class="tool-buttons">${group.buttons.map(button).join("")}</div></div>`).join("");
+  const infra = `<div class="tool-group"><span class="tool-title">Infrastructure</span><div class="tool-buttons"><select data-infra aria-label="Infrastructure service" ${busy ? "disabled" : ""}>${INFRA_SERVICE_OPTIONS.map((service) => `<option value="${esc(service)}">${esc(service)}</option>`).join("")}</select>` +
+    `<button class="link-btn" type="button" data-tool="infra-enable" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Enable</button>` +
+    `<button class="link-btn danger-link" type="button" data-tool="infra-disable" data-project="${esc(project.id)}" ${busy ? "disabled" : ""}>Disable</button></div></div>`;
+  const result = state && !state.running
+    ? `<div class="tool-result ${state.ok ? "ok" : "fail"}"><strong>${esc(state.title)}: ${state.ok ? "finished" : "reported a problem"}</strong><code>${esc(state.argv)}</code><pre>${esc(state.output || "No output.")}</pre></div>`
+    : state?.running ? `<div class="log-empty">Running ${esc(state.title)}…</div>` : "";
+  return collapsible("tools", "Tools", `<div class="tools-box">${groups}${infra}${result}</div>`);
+}
+
+content.addEventListener("click", async (event) => {
+  const tool = event.target.closest("button[data-tool]");
+  if (!tool || tool.disabled) return;
+  const projectId = tool.dataset.project;
+  const key = tool.dataset.tool;
+  const spec = TOOL_GROUPS.flatMap((group) => group.buttons).find((entry) => entry.tool === key);
+  const service = tool.closest(".tools-box")?.querySelector("select[data-infra]")?.value;
+  const isInfra = key.startsWith("infra-");
+  const title = spec?.label ?? `${isInfra && key === "infra-enable" ? "Enable" : "Disable"} ${service}`;
+  if (spec?.confirm && !window.confirm(spec.confirm)) return;
+  if (key === "infra-disable" && !window.confirm(`Disable ${service} for this project?`)) return;
+  toolState.set(projectId, { title, running: true });
+  render();
+  try {
+    const result = await post("/api/tools", { project: projectId, tool: key, ...(isInfra ? { service } : {}) });
+    toolState.set(projectId, { title, ok: result.ok, output: result.output, argv: result.argv.join(" "), running: false });
+    // Repairs and infra toggles change doctor's findings, so run it again.
+    if (key === "doctor-fix-apply" || isInfra) {
+      doctors.delete(projectId);
+      render();
+      try { doctors.set(projectId, { ...(await api(`/api/doctor?project=${encodeURIComponent(projectId)}&refresh=1`)), at: Date.now() }); } catch (error) { doctors.set(projectId, { error: error.message, at: Date.now() }); }
+    }
+    showNotice(result.ok ? `${title} finished.` : `${title} reported a problem. See the Tools output.`, !result.ok, false, null, projectId);
+  } catch (error) {
+    toolState.set(projectId, { title, ok: false, output: error.message, argv: "", running: false });
+    showNotice(error.message, true, false, null, projectId);
+  }
+  render();
+});
 
 function configSection(project) {
   const state = configState.get(project.id);

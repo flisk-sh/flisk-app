@@ -178,6 +178,19 @@ async function readBody(request) {
 export const CONFIG_COMMANDS = { regenerate: ["config", "regenerate"], verify: ["config", "verify"], migrate: ["config", "migrate"] };
 export const CONFIG_LOG_LIMIT = 200;
 
+// Tools panel. Each key is one button; the request only picks a key, never an argv.
+// `mutates` tells the server to refresh cached status after the command runs.
+export const TOOL_COMMANDS = {
+  "doctor-fix-preview": { argv: ["doctor", "--fix", "--dry-run"], mutates: false },
+  "doctor-fix-apply": { argv: ["doctor", "--fix", "--yes"], mutates: true },
+  "up-preview": { argv: ["up", "--dry-run"], mutates: false },
+  "down-preview": { argv: ["down", "--dry-run"], mutates: false },
+  "runtime-check-assets": { argv: ["runtime", "--check-assets"], mutates: false },
+};
+// Optional infrastructure services `tdk config enable-infra` / `disable-infra` accept.
+export const INFRA_SERVICES = ["monitoring", "elk", "debezium", "golden_image", "verdaccio"];
+export const INFRA_TOOLS = { "infra-enable": "enable-infra", "infra-disable": "disable-infra" };
+
 export const RESOURCE_TYPES = ["backend", "frontend", "worker", "mcp", "bring-your-own", "sdk"];
 export const PROJECT_TEMPLATES = ["restaurant", "saas", "erp", "user-management", "ecommerce", "example"];
 const NAME_RE = /^[a-z][a-z0-9-]{0,62}$/;
@@ -1003,6 +1016,26 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         const result = actionResult(await runCommand(project, ["stack", body.name, "--resources", ...names, "--yes"], { timeoutMs: 120_000 }));
         invalidateStatus(project);
         return sendJson(response, 200, result);
+      }
+      if (url.pathname === "/api/tools" && request.method === "POST") {
+        const body = await readBody(request);
+        const project = typeof body.project === "string" ? projects.find((entry) => entry.id === body.project) : null;
+        if (!project) return sendJson(response, 400, { error: "Choose a project." });
+        let argv;
+        if (Object.hasOwn(INFRA_TOOLS, body.tool)) {
+          if (!INFRA_SERVICES.includes(body.service)) return sendJson(response, 400, { error: "Choose a supported infrastructure service." });
+          argv = ["config", INFRA_TOOLS[body.tool], body.service];
+        } else if (Object.hasOwn(TOOL_COMMANDS, body.tool)) {
+          argv = TOOL_COMMANDS[body.tool].argv;
+        } else return sendJson(response, 400, { error: "Choose a tool from the panel." });
+        const mutates = Object.hasOwn(TOOL_COMMANDS, body.tool) ? TOOL_COMMANDS[body.tool].mutates : true;
+        const raw = await runCommand(project, argv, { timeoutMs: 180_000 });
+        if (mutates) {
+          // Repairs and infra toggles change what status and doctor report, so drop the cached reads.
+          invalidateStatus(project);
+          doctorCache.delete(project.id);
+        }
+        return sendJson(response, 200, { ...actionResult(raw), tool: body.tool, argv: ["tdk", ...argv] });
       }
       if (url.pathname === "/api/config" && request.method === "POST") {
         const body = await readBody(request);
