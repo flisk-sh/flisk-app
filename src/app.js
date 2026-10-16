@@ -1040,6 +1040,21 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
           entries: configLogs.filter((entry) => entry.project === project.id).slice(0, 50),
         });
       }
+      if (url.pathname === "/api/projects/add" && request.method === "POST") {
+        // Registers an existing TDK project that the scan did not find, for example one outside the common folders.
+        const body = await readBody(request);
+        const root = allowedParent(body.path);
+        if (!root) return sendJson(response, 400, { error: "Choose an existing folder inside your home directory." });
+        if (!existsSync(join(root, PROJECT_FILE))) return sendJson(response, 400, { error: `No ${PROJECT_FILE} in that folder. Choose the folder that contains .tdk, or create a new project.` });
+        const [added] = resolveProjects(null, [root]);
+        const known = projects.find((entry) => entry.root === added.root);
+        if (!known) projects.push(added);
+        if (!appState.knownRoots.includes(added.root)) {
+          appState = normalizeState({ ...appState, knownRoots: [...appState.knownRoots, added.root] });
+          if (statePath) writeAppState(appState, statePath);
+        }
+        return sendJson(response, 200, { ok: true, alreadyListed: Boolean(known), project: { id: added.id, name: added.name, path: added.root } });
+      }
       if (url.pathname === "/api/projects/create" && request.method === "POST") {
         const body = await readBody(request);
         const parent = allowedParent(body.parent);

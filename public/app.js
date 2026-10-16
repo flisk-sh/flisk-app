@@ -77,7 +77,7 @@ const ICONS = {
   pin: '<path d="M12.5 3.5 16.5 7.5 13.6 9.2 11.2 13.3 6.7 8.8 10.8 6.4z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/><path d="M8.9 11.1 4 16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
   hide: '<path d="M3 10s2.6-5 7-5 7 5 7 5-2.6 5-7 5-7-5-7-5z M4 4l12 12" stroke="currentColor" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
 };
-const ACTION_ICONS = { start: "start", stop: "stop", restart: "restart", logs: "logs", "open-project": "folder", "open-terminal": "terminal", "new-project": "plus", "new-resource": "plus", "new-stack": "stack", "move-resource": "move", "config-regenerate": "regenerate", "config-verify": "verify", "hide-project": "hide", "pin-project": "pin", "pin-resource": "pin", "doctor-refresh": "restart" };
+const ACTION_ICONS = { start: "start", stop: "stop", restart: "restart", logs: "logs", "open-project": "folder", "open-terminal": "terminal", "new-project": "plus", "open-existing-project": "folder", "new-resource": "plus", "new-stack": "stack", "move-resource": "move", "config-regenerate": "regenerate", "config-verify": "verify", "hide-project": "hide", "pin-project": "pin", "pin-resource": "pin", "doctor-refresh": "restart" };
 
 // Adds a small SF-Symbol-style glyph in front of each action button label.
 function decorateButtons(root = document) {
@@ -259,7 +259,7 @@ function renderOverview() {
 
   content.innerHTML = `<div class="content-inner">
     <div class="page-head"><div><h1>Projects</h1><p>${projects.length} local workspace${projects.length === 1 ? "" : "s"} discovered across your development folders.</p>${hiddenCount ? `<div class="hidden-note">${hiddenCount} hidden · <button type="button" data-action="toggle-hidden">${showHidden ? "Hide them again" : "Show them"}</button></div>` : ""}</div>
-      <div class="head-actions"><button class="button" type="button" data-action="build-with-ai">Build with AI</button><button class="button primary" type="button" data-action="new-project">New project</button></div></div>
+      <div class="head-actions"><button class="button" type="button" data-action="build-with-ai">Build with AI</button><button class="button" type="button" data-action="open-existing-project">Open project</button><button class="button primary" type="button" data-action="new-project">New project</button></div></div>
     <div class="narrow-search"><input id="content-search" type="search" title="Filter projects (/ or Ctrl/Cmd+F)" placeholder="Filter projects" aria-label="Filter projects" value="${esc(searchTerm)}" autocomplete="off"></div>
     ${collapsible("summary", "Summary", `<div class="gauges">${overviewGauges(ready, resources)}</div>${tokenBarMarkup(sumTokens(projects.map((project) => project.tokens)), "Generated share (est.)")}`)}
     ${pinnedResourcesPanel()}
@@ -1037,6 +1037,7 @@ async function handleCrud(action, projectId, name, dataset) {
     return true;
   }
   if (action === "new-project") { await openNewProject(); return true; }
+  if (action === "open-existing-project") { await openExistingProject(); return true; }
   if (action === "build-with-ai") { openBuildWithAi(); return true; }
   if (action === "config-regenerate" || action === "config-verify") {
     await runConfig(projectId, action === "config-regenerate" ? "regenerate" : "verify");
@@ -1111,6 +1112,27 @@ async function openNewProject() {
 }
 
 document.querySelector("#new-project-nav").addEventListener("click", () => openNewProject());
+
+async function openExistingProject() {
+  const info = await loadMeta();
+  openForm({
+    title: "Open project",
+    intro: "Adds an existing TDK project (a folder that contains .tdk/project.json) to the dashboard.",
+    fields: [{ name: "path", label: "Project folder", value: "", placeholder: `${info.defaultParent}/my-shop`, list: info.roots, hint: "The folder that contains .tdk. ~ means your home folder." }],
+    submit: "Open project",
+    validate: (v) => (v.path ? "" : "Enter the project folder."),
+    run: async (v) => {
+      const result = await post("/api/projects/add", { path: v.path });
+      if (result.ok && result.project) {
+        selectedProjectId = result.project.id;
+        result.output = result.alreadyListed ? `${result.project.name} is already in the list.` : `Added ${result.project.name}.`;
+      }
+      return result;
+    },
+  });
+}
+
+document.querySelector("#open-project-nav").addEventListener("click", () => openExistingProject());
 
 // Asks which AI chat to open. Each link carries the TDK starter prompt (inspect.js), so nothing about the local machine is sent.
 async function openBuildWithAi() {

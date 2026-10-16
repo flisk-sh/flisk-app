@@ -294,3 +294,25 @@ describe("Build with AI failures and token savings in the projects API", () => {
     assert.equal(tokens.truncated, false);
   });
 });
+
+describe("Open project", () => {
+  it("adds an existing TDK project once, and refuses folders without .tdk/project.json", async () => {
+    const started = await serverFor({ projects: [], probe: async () => supported });
+    const origin = new URL(started.url).origin;
+    const add = (path) => fetch(`${origin}/api/projects/add`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify({ path }) });
+    const root = projectFixture("shop");
+
+    const first = await add(root);
+    assert.equal(first.status, 200);
+    const firstBody = await first.json();
+    assert.equal(firstBody.alreadyListed, false);
+    assert.equal(firstBody.project.name, "shop");
+    assert.equal((await (await add(root)).json()).alreadyListed, true);
+
+    const empty = mkdtempSync(join(tmpdir(), "tdk-app-test-"));
+    tempDirs.push(empty);
+    assert.equal((await add(empty)).status, 400);
+    assert.equal((await add("/etc")).status, 400);
+    assert.equal((await add(join(root, "missing"))).status, 400);
+  });
+});
