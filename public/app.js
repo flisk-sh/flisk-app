@@ -91,7 +91,8 @@ function decorateButtons(root = document) {
   for (const button of root.querySelectorAll("button[data-action]:not([data-iconed])")) {
     const icon = ICONS[ACTION_ICONS[button.dataset.action]];
     button.dataset.iconed = "1";
-    if (icon) button.insertAdjacentHTML("afterbegin", `<svg class="btn-icon" viewBox="0 0 20 20" aria-hidden="true">${icon}</svg>`);
+    // Buttons rendered with btnIcon() already carry their glyph; a second one doubles it.
+    if (icon && !button.querySelector(".btn-icon")) button.insertAdjacentHTML("afterbegin", `<svg class="btn-icon" viewBox="0 0 20 20" aria-hidden="true">${icon}</svg>`);
   }
 }
 
