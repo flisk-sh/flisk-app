@@ -191,7 +191,7 @@ export const TOOL_COMMANDS = {
 export const INFRA_SERVICES = ["monitoring", "elk", "debezium", "golden_image", "verdaccio"];
 export const INFRA_TOOLS = { "infra-enable": "enable-infra", "infra-disable": "disable-infra" };
 
-export const RESOURCE_TYPES = ["backend", "frontend", "worker", "mcp", "bring-your-own", "sdk"];
+export const RESOURCE_TYPES = ["backend", "frontend", "worker", "mcp", "bring-your-own", "sdk", "agent"];
 export const PROJECT_TEMPLATES = ["restaurant", "saas", "erp", "user-management", "ecommerce", "example"];
 const NAME_RE = /^[a-z][a-z0-9-]{0,62}$/;
 const ID_RE = /^[a-z][a-z0-9-]{0,30}$/;

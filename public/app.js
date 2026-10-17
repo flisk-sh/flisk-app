@@ -955,7 +955,7 @@ applySidebarState();
 const KEBAB = /^[a-z][a-z0-9-]{0,62}$/;
 let meta = null;
 async function loadMeta() {
-  if (!meta) meta = await api("/api/meta").catch(() => ({ defaultParent: "~", templates: [], resourceTypes: ["backend", "frontend", "worker", "mcp", "bring-your-own", "sdk"] }));
+  if (!meta) meta = await api("/api/meta").catch(() => ({ defaultParent: "~", templates: [], resourceTypes: ["backend", "frontend", "worker", "mcp", "bring-your-own", "sdk", "agent"] }));
   return meta;
 }
 

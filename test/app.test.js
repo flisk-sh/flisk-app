@@ -232,6 +232,18 @@ describe("TDK App local server", () => {
     assert.equal((await send({ project: "a", operation: "restart", resources: ["api"] })).status, 400);
     assert.equal(calls.length, 0);
   });
+
+  it("creates an agent resource through tdk resource and rejects unknown types", async () => {
+    const calls = [];
+    const runCommand = async (_project, args) => { calls.push(args); return { status: 0, stderr: "", stdout: JSON.stringify({ data: {} }) }; };
+    const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand, probe: async () => supported });
+    const origin = new URL(started.url).origin;
+    const send = (body) => fetch(`${origin}/api/resources`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify(body) });
+    assert.equal((await send({ project: "a", name: "bot", type: "agent" })).status, 200);
+    assert.deepEqual(calls.splice(0), [["resource", "bot", "--type", "agent", "--yes"]]);
+    assert.equal((await send({ project: "a", name: "bot", type: "nope" })).status, 400);
+    assert.equal(calls.length, 0);
+  });
 });
 
 describe("tools panel", () => {
