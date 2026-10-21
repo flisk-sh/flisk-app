@@ -14,7 +14,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>CFBundleName</key><string>TDK App</string>
-<key>CFBundleIdentifier</key><string>com.tdk-landscape.tdk-app</string>
+<key>CFBundleIdentifier</key><string>com.flisk-sh.tdk-app</string>
 <key>CFBundleExecutable</key><string>TDKApp</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
