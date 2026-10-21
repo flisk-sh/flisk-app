@@ -3,7 +3,7 @@
 const TDK_INSPECT = (() => {
   // The chat services take the prompt in the URL, so the pasted output is capped to keep the link usable.
   const MAX_OUTPUT_CHARS = 4000;
-  // Same three services and brand colours as the "Review this PR in" badges in tdk-cli-core.
+  // Same three services and brand colours as the "Review this PR in" badges in flisk.
   const PROVIDERS = [
     { label: "Grok", color: "#111111", base: "https://grok.com/?q=", logo: '<path fill="currentColor" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/>' },
     { label: "Claude", color: "#D97757", base: "https://claude.ai/new?q=", logo: '<path fill="currentColor" d="M17.304 3.541h-3.672l6.696 16.918H24Zm-10.608 0L0 20.459h3.744l1.37-3.553h7.005l1.369 3.553h3.744L10.536 3.541Zm-.371 10.223L8.616 7.82l2.291 5.945Z"/>' },
