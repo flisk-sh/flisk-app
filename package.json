@@ -1,5 +1,5 @@
 {
-  "name": "@tdk-landscape/tdk-app",
+  "name": "@flisk-sh/tdk-app",
   "version": "0.1.0",
   "description": "Local desktop command center for TDK projects",
   "license": "MIT",

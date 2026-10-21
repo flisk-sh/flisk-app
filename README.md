@@ -56,7 +56,7 @@ Requires Xcode Command Line Tools to build and Node.js 22.12+ on your login-shel
 After a package release, install the published package globally and run:
 
 ```sh
-npm install --global @tdk-landscape/tdk-app
+npm install --global @flisk-sh/tdk-app
 tdk-app
 ```
 
