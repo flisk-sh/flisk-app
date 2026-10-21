@@ -438,9 +438,9 @@ export function runTdk(project, args, { binary = "tdk", timeoutMs = 30_000, deta
   });
 }
 
-export const MANUAL_UPDATE_COMMAND = "curl -fsSL https://tdk-landscape.github.io/install.sh | sh";
+export const MANUAL_UPDATE_COMMAND = "curl -fsSL https://flisk.sh/install.sh | sh";
 export const MIN_CLI_VERSION = null;
-const INSTALL_URL = "https://github.com/tdk-landscape/tdk-cli-core#install";
+const INSTALL_URL = "https://github.com/flisk-sh/flisk#install";
 // The CLI starts and stops through `up` and `down` (no scoped start/stop/restart exist).
 const LIFECYCLE_COMMANDS = ["up", "down"];
 

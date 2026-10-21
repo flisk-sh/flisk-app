@@ -79,7 +79,7 @@ const TDK_INSPECT = (() => {
       "- Tilt reads the service.json files, generates the runtime config and starts the resources. Traefik serves each one at a path, for example orders-api at /api/orders.",
       "",
       "Commands",
-      "- tdk doctor: check Docker, Tilt and Bun 1.2+ (install: curl -fsSL https://tdk-landscape.github.io/install.sh | sh)",
+      "- tdk doctor: check Docker, Tilt and Bun 1.2+ (install: curl -fsSL https://flisk.sh/install.sh | sh)",
       "- tdk project [saas|restaurant|erp|user-management|ecommerce|example] --yes: create the project, blank or from a starter",
       "- tdk resource <name> --type backend|frontend|worker|mcp|bring-your-own|sdk --stack <stack> --yes",
       "  backend: --framework hono|express|elysia|fastify|nestjs|koa|h3, --language bun|python|go|rust, --feature prisma",

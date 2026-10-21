@@ -476,7 +476,7 @@ function doctorSection(project) {
 }
 
 const updateState = { running: false, message: "" };
-const MANUAL_UPDATE = "curl -fsSL https://tdk-landscape.github.io/install.sh | sh";
+const MANUAL_UPDATE = "curl -fsSL https://flisk.sh/install.sh | sh";
 
 async function updateCli() {
   updateState.running = true;
