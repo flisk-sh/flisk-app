@@ -80,6 +80,8 @@ flisk-app
 
 The package is not published yet; use the checkout instructions above until a release is available.
 
+The source lives at [flisk-sh/flisk-app](https://github.com/flisk-sh/flisk-app) (it was `flisk-sh/tdk-app` before the rename; GitHub redirects the old URL).
+
 ## Development
 
 ```sh

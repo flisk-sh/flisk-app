@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Local desktop command center for Flisk projects",
   "license": "MIT",
+  "homepage": "https://github.com/flisk-sh/flisk-app#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flisk-sh/flisk-app.git"
+  },
+  "bugs": {
+    "url": "https://github.com/flisk-sh/flisk-app/issues"
+  },
   "type": "module",
   "bin": {
     "flisk-app": "src/cli.js"
