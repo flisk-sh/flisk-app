@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { runInNewContext } from "node:vm";
 
-// inspect.js is a browser script, so run it in a bare VM context and take the TDK_INSPECT it defines.
+// inspect.js is a browser script, so run it in a bare VM context and take the FLISK_INSPECT it defines.
 const source = readFileSync(new URL("../public/inspect.js", import.meta.url), "utf8");
-const inspect = runInNewContext(`${source}\nTDK_INSPECT`, {});
+const inspect = runInNewContext(`${source}\nFLISK_INSPECT`, {});
 
 describe("inspect prompts", () => {
   it("redacts secret-looking values and keeps ordinary text", () => {
@@ -35,7 +35,7 @@ describe("inspect prompts", () => {
 
   it("names the resource and project, and redacts the log text", () => {
     const prompt = inspect.logsPrompt({ project: "shop", path: "~/shop", resource: "api", lines: ["ERROR token=abc999 refused"] });
-    assert.match(prompt, /"api" resource in the TDK project "shop" \(~\/shop\)/);
+    assert.match(prompt, /"api" resource in the Flisk project "shop" \(~\/shop\)/);
     assert.match(prompt, /ERROR token=\[redacted\] refused/);
   });
 
@@ -69,9 +69,9 @@ describe("inspect prompts", () => {
     for (const link of links) assert.equal(decodeURIComponent(link.href.slice(link.href.indexOf("?q=") + 3)), prompt);
   });
 
-  it("builds the starter prompt with the TDK commands and architecture rules", () => {
+  it("builds the starter prompt with the Flisk commands and architecture rules", () => {
     const prompt = inspect.buildPrompt();
-    for (const command of ["tdk project", "tdk resource", "tdk stack", "tdk up", "tdk down --force", "tdk config regenerate", "tdk networks", "tdk doctor"]) {
+    for (const command of ["flisk project", "flisk resource", "flisk stack", "flisk up", "flisk down --force", "flisk config regenerate", "flisk networks", "flisk doctor"]) {
       assert.ok(prompt.includes(command), `missing ${command}`);
     }
     assert.match(prompt, /Project > Stack > Resource/);

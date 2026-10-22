@@ -4,9 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="no-referrer" />
-    <meta name="tdk-token" content="__TDK_CENTER_TOKEN__" />
-    <meta name="description" content="Local project dashboard for TDK" />
-    <title>TDK App</title>
+    <meta name="flisk-token" content="__FLISK_CENTER_TOKEN__" />
+    <meta name="description" content="Local project dashboard for Flisk" />
+    <title>Flisk App</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -163,6 +163,9 @@
       .conflicts { margin: 0 0 19px; border: 1px solid var(--line-soft); border-radius: 11px; background: var(--surface); }
       .conflicts summary { cursor: pointer; padding: 9px 11px; color: var(--amber); font-size: 11px; font-weight: 550; }
       .conflict-body { display: grid; gap: 6px; padding: 0 11px 10px; color: var(--secondary); font-size: 10px; }
+      .conflict-claimants { display: grid; gap: 3px; margin: 3px 0 0; padding: 0; list-style: none; }
+      .conflict-claimants li { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+      .conflict-claimants code { font: inherit; opacity: .7; overflow-wrap: anywhere; }
       .section-label { display: flex; align-items: center; justify-content: space-between; margin: 21px 0 8px; color: var(--secondary); font-size: 10px; font-weight: 650; letter-spacing: .055em; text-transform: uppercase; }
       .stack-list { display: grid; gap: 7px; }
       .stack { overflow: hidden; border: 1px solid var(--line-soft); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 2px #00000006; }
@@ -959,7 +962,7 @@
     <div class="app">
       <button id="side-toggle" class="side-toggle" type="button" aria-label="Toggle sidebar (Cmd+B)" aria-expanded="true" aria-controls="sidebar" title="Toggle sidebar (⌘B)"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="13" rx="3" stroke="currentColor" stroke-width="1.5"/><path d="M8 3.5v13" stroke="currentColor" stroke-width="1.5"/></svg></button>
       <aside id="sidebar" class="sidebar" aria-label="Project navigation">
-        <div class="brand"><span class="brand-mark">T</span><span class="brand-name">TDK App</span><span class="local-mark" title="Local session"></span></div>
+        <div class="brand"><span class="brand-mark">F</span><span class="brand-name">Flisk App</span><span class="local-mark" title="Local session"></span></div>
         <div class="sidebar-tools">
           <label class="search"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="8.8" cy="8.8" r="5.8" stroke="currentColor" stroke-width="1.5"/><path d="m13.2 13.2 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg><input id="search" type="search" title="Filter projects (/ or Ctrl/Cmd+F)" placeholder="Filter projects" aria-label="Filter projects" autocomplete="off" /></label>
         </div>

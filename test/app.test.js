@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { TOOL_COMMANDS, commonProjectScanRoots, discoverProjectRoot, discoverProjects, findClaudeDesktopApp, normalizeState, probeCli, resolveProjects, startAppServer } from "../src/app.js";
+import { TOOL_COMMANDS, cliBinaryCandidates, commonProjectScanRoots, discoverProjectRoot, discoverProjects, findClaudeDesktopApp, normalizeState, probeCli, resolveProjects, resolveTdkBinary, startAppServer } from "../src/app.js";
 
 const servers = [];
 const tempDirs = [];
@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 function projectFixture(name) {
-  const root = mkdtempSync(join(tmpdir(), "tdk-app-test-"));
+  const root = mkdtempSync(join(tmpdir(), "flisk-app-test-"));
   tempDirs.push(root);
   mkdirSync(join(root, ".tdk"), { recursive: true });
   writeFileSync(join(root, ".tdk", "project.json"), JSON.stringify({ project: { name } }));
@@ -29,18 +29,19 @@ async function serverFor(options) {
 
 const supported = { state: "supported", lifecycle: true, version: "1.3.145", minVersion: "1.3.145", installUrl: "https://example.test", message: null };
 
-function fakeCli({ version = "1.3.145", commands = ["up", "down"], versionStatus = 0, versionStderr = "" } = {}) {
+function fakeCli({ version = "1.3.145", commands = ["up", "down"], versionStatus = 0, versionStderr = "", program = "flisk" } = {}) {
   const calls = [];
   const execute = async (_project, args) => {
     calls.push(args);
     if (args[0] === "--version") return { status: versionStatus, stdout: versionStatus ? "" : `${version}\n`, stderr: versionStderr };
     const known = commands.includes(args[0]);
-    return { status: 0, stderr: "", stdout: known ? `Usage: tdk ${args[0]} [options]\n` : "Usage: tdk [options] [command]\n" };
+    const alias = args[0] === "up" ? "up|deploy" : args[0];
+    return { status: 0, stderr: "", stdout: known ? `Usage: ${program} ${alias} [options]\n` : `Usage: ${program} [options] [command]\n` };
   };
   return { execute, calls };
 }
 
-describe("TDK CLI capability probe", () => {
+describe("CLI capability probe", () => {
   it("reports lifecycle support for a capable CLI", async () => {
     const { execute } = fakeCli();
     const result = await probeCli(execute);
@@ -49,7 +50,7 @@ describe("TDK CLI capability probe", () => {
     assert.equal(result.version, "1.3.145");
   });
 
-  it("accepts 1.3.144 because it has tdk up and tdk down", async () => {
+  it("accepts 1.3.144 because it has flisk up and flisk down", async () => {
     const result = await probeCli(fakeCli({ version: "1.3.144" }).execute);
     assert.equal(result.lifecycle, true);
   });
@@ -78,17 +79,70 @@ describe("TDK CLI capability probe", () => {
   });
 });
 
-describe("TDK App local server", () => {
+describe("CLI binary discovery", () => {
+  it("prefers the current flisk binary over the legacy tdk alias", () => {
+    const dir = mkdtempSync(join(tmpdir(), "flisk-app-bin-"));
+    tempDirs.push(dir);
+    for (const name of ["flisk", "tdk"]) writeFileSync(join(dir, name), "");
+    const candidates = cliBinaryCandidates({ PATH: dir });
+    const fliskIndex = candidates.indexOf(join(dir, "flisk"));
+    const tdkIndex = candidates.indexOf(join(dir, "tdk"));
+    assert.ok(fliskIndex >= 0, "flisk is discovered");
+    assert.ok(tdkIndex >= 0, "tdk is discovered");
+    assert.ok(fliskIndex < tdkIndex, "flisk comes first");
+  });
+
+  it("finds a legacy tdk-only install", () => {
+    const dir = mkdtempSync(join(tmpdir(), "flisk-app-bin-"));
+    tempDirs.push(dir);
+    writeFileSync(join(dir, "tdk"), "");
+    const candidates = cliBinaryCandidates({ PATH: dir });
+    assert.ok(candidates.includes(join(dir, "tdk")));
+  });
+
+  it("honours an explicit FLISK_BIN path over anything on PATH", () => {
+    assert.equal(resolveTdkBinary({ FLISK_BIN: "/opt/custom/flisk", PATH: "/usr/bin" }), "/opt/custom/flisk");
+    assert.equal(resolveTdkBinary({ TDK_BIN: "/opt/custom/tdk", PATH: "/usr/bin" }), "/opt/custom/tdk");
+  });
+});
+
+describe("CLI capability probe naming", () => {
+  it("detects the flisk CLI and enables lifecycle", async () => {
+    const { execute, calls } = fakeCli({ version: "1.3.204" });
+    const result = await probeCli(execute);
+    assert.equal(result.state, "supported");
+    assert.equal(result.lifecycle, true);
+    assert.equal(result.program, "flisk");
+    assert.equal(result.label, "Flisk CLI");
+    // The CLI prints "Usage: flisk up|deploy ..."; the alias list must still answer `up`.
+    assert.ok(calls.some((args) => args[0] === "up" && args[1] === "--help"));
+  });
+
+  it("still accepts the legacy tdk CLI name", async () => {
+    const result = await probeCli(fakeCli({ program: "tdk" }).execute);
+    assert.equal(result.state, "supported");
+    assert.equal(result.program, "tdk");
+    assert.equal(result.label, "TDK CLI");
+  });
+
+  it("names the CLI it found in the unsupported message", async () => {
+    const result = await probeCli(fakeCli({ commands: [] }).execute);
+    assert.equal(result.state, "unsupported");
+    assert.match(result.message, /Flisk CLI 1\.3\.145 does not support `flisk up\/down`/);
+  });
+});
+
+describe("Flisk App local server", () => {
   it("rejects lifecycle actions without spawning a mutating command when unsupported", async () => {
     const calls = [];
     const runCommand = async (_project, args) => {
       calls.push(args);
       if (args[0] === "--version") return { status: 0, stdout: "1.3.140\n", stderr: "" };
-      return { status: 0, stderr: "", stdout: "Usage: tdk [options] [command]\n" };
+      return { status: 0, stderr: "", stdout: "Usage: flisk [options] [command]\n" };
     };
     const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand });
     const origin = new URL(started.url).origin;
-    const headers = { "content-type": "application/json", origin, "x-tdk-token": started.token };
+    const headers = { "content-type": "application/json", origin, "x-flisk-token": started.token };
     const cliState = await (await fetch(`${origin}/api/cli`, { headers })).json();
     assert.equal(cliState.lifecycle, false);
     const response = await fetch(`${origin}/api/actions`, { method: "POST", headers, body: JSON.stringify({ project: "a", operation: "start" }) });
@@ -97,6 +151,27 @@ describe("TDK App local server", () => {
     assert.equal(body.code, "cli_unsupported");
     assert.match(body.error, /Update the CLI/);
     assert(!calls.some((args) => args.includes("--json")));
+  });
+
+  it("runs lifecycle actions when the installed CLI reports itself as flisk", async () => {
+    const calls = [];
+    const runCommand = async (_project, args) => {
+      calls.push(args);
+      if (args[0] === "--version") return { status: 0, stdout: "1.3.204\n", stderr: "" };
+      if (args[0] === "up") return { status: 0, stderr: "", stdout: "Usage: flisk up|deploy [options]\n" };
+      if (args[0] === "down") return { status: 0, stderr: "", stdout: "Usage: flisk down [options]\n" };
+      return { status: 0, stderr: "", stdout: "Usage: flisk [options] [command]\n" };
+    };
+    const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand, dockerCheck: async () => true });
+    const origin = new URL(started.url).origin;
+    const headers = { "content-type": "application/json", origin, "x-flisk-token": started.token };
+    const cliState = await (await fetch(`${origin}/api/cli`, { headers })).json();
+    assert.equal(cliState.lifecycle, true);
+    assert.equal(cliState.program, "flisk");
+    const response = await fetch(`${origin}/api/actions`, { method: "POST", headers, body: JSON.stringify({ project: "a", operation: "start", background: true }) });
+    assert.equal(response.status, 202);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert(calls.some((args) => args[0] === "up" && args.includes("--json")));
   });
 
   it("refuses non-loopback binds", async () => {
@@ -109,11 +184,11 @@ describe("TDK App local server", () => {
     mkdirSync(nested, { recursive: true });
     assert.equal(discoverProjectRoot(nested), root);
     assert.equal(resolveProjects(root, [root]).length, 1);
-    assert.throws(() => resolveProjects(null, [join(root, "missing")]), /Not a TDK project directory/);
+    assert.throws(() => resolveProjects(null, [join(root, "missing")]), /Not a Flisk project directory/);
   });
 
   it("finds projects below scan roots and skips dependency folders", () => {
-    const root = mkdtempSync(join(tmpdir(), "tdk-app-scan-"));
+    const root = mkdtempSync(join(tmpdir(), "flisk-app-scan-"));
     tempDirs.push(root);
     const project = join(root, "workspace", "project");
     mkdirSync(join(project, ".tdk"), { recursive: true });
@@ -128,7 +203,7 @@ describe("TDK App local server", () => {
   });
 
   it("reaches shallow projects before a large sibling tree exhausts the directory cap", () => {
-    const root = mkdtempSync(join(tmpdir(), "tdk-app-scan-"));
+    const root = mkdtempSync(join(tmpdir(), "flisk-app-scan-"));
     tempDirs.push(root);
     const project = join(root, "a-project");
     mkdirSync(join(project, ".tdk"), { recursive: true });
@@ -165,14 +240,20 @@ describe("TDK App local server", () => {
     const inspectResponse = await fetch(new URL("/inspect.js", started.url));
     assert.equal(inspectResponse.status, 200);
     assert.match(inspectResponse.headers.get("content-type"), /text\/javascript/);
-    assert.match(await inspectResponse.text(), /const TDK_INSPECT/);
+    assert.match(await inspectResponse.text(), /const FLISK_INSPECT/);
     const response = await fetch(new URL("/api/projects", started.url), {
-      headers: { "x-tdk-token": started.token },
+      headers: { "x-flisk-token": started.token },
     });
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.projects[0].resources[0].url, "http://localhost:8080/");
-    assert.deepEqual(body.projects[0].conflicts, [{ port: 8080, claimants: ["a (api)", "b (api)"] }]);
+    assert.deepEqual(body.projects[0].conflicts, [{
+      port: 8080,
+      claimants: [
+        { label: "a (api)", path: "/projects/a" },
+        { label: "b (api)", path: "/projects/b" },
+      ],
+    }]);
   });
 
   it("gives bring-your-own resources a direct endpoint from directUrl or their declared port", async () => {
@@ -193,14 +274,14 @@ describe("TDK App local server", () => {
     });
     const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand });
     const origin = new URL(started.url).origin;
-    const body = await (await fetch(`${origin}/api/projects`, { headers: { "x-tdk-token": started.token } })).json();
+    const body = await (await fetch(`${origin}/api/projects`, { headers: { "x-flisk-token": started.token } })).json();
     const [api, search, jobs] = body.projects[0].resources;
     assert.equal(api.url, "http://localhost:4002/");
     assert.equal(search.url, "http://localhost:4005/");
     assert.equal(jobs.url, null);
   });
 
-  it("routes scoped actions through the installed TDK CLI", async () => {
+  it("routes scoped actions through the installed Flisk CLI", async () => {
     const project = { id: "a", name: "a", root: "/projects/a" };
     const calls = [];
     const runCommand = async (_project, args) => {
@@ -211,19 +292,19 @@ describe("TDK App local server", () => {
     const origin = new URL(started.url).origin;
     const response = await fetch(`${origin}/api/actions`, {
       method: "POST",
-      headers: { "content-type": "application/json", origin, "x-tdk-token": started.token },
+      headers: { "content-type": "application/json", origin, "x-flisk-token": started.token },
       body: JSON.stringify({ project: "a", operation: "start", stack: "shop", resources: ["api"] }),
     });
     assert.equal(response.status, 200);
     assert.deepEqual(calls, [["up", "--json", "shop", "--only", "api"]]);
   });
 
-  it("maps whole-project stop and restart to tdk down / tdk up and refuses scoped ones", async () => {
+  it("maps whole-project stop and restart to flisk down / flisk up and refuses scoped ones", async () => {
     const calls = [];
     const runCommand = async (_project, args) => { calls.push(args); return { status: 0, stderr: "", stdout: JSON.stringify({ data: {} }) }; };
     const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand, probe: async () => supported });
     const origin = new URL(started.url).origin;
-    const send = (body) => fetch(`${origin}/api/actions`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify(body) });
+    const send = (body) => fetch(`${origin}/api/actions`, { method: "POST", headers: { "content-type": "application/json", origin, "x-flisk-token": started.token }, body: JSON.stringify(body) });
     assert.equal((await send({ project: "a", operation: "stop" })).status, 200);
     assert.deepEqual(calls.splice(0), [["down", "--json", "--force"]]);
     assert.equal((await send({ project: "a", operation: "restart" })).status, 200);
@@ -233,12 +314,12 @@ describe("TDK App local server", () => {
     assert.equal(calls.length, 0);
   });
 
-  it("creates an agent resource through tdk resource and rejects unknown types", async () => {
+  it("creates an agent resource through flisk resource and rejects unknown types", async () => {
     const calls = [];
     const runCommand = async (_project, args) => { calls.push(args); return { status: 0, stderr: "", stdout: JSON.stringify({ data: {} }) }; };
     const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand, probe: async () => supported });
     const origin = new URL(started.url).origin;
-    const send = (body) => fetch(`${origin}/api/resources`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify(body) });
+    const send = (body) => fetch(`${origin}/api/resources`, { method: "POST", headers: { "content-type": "application/json", origin, "x-flisk-token": started.token }, body: JSON.stringify(body) });
     assert.equal((await send({ project: "a", name: "bot", type: "agent" })).status, 200);
     assert.deepEqual(calls.splice(0), [["resource", "bot", "--type", "agent", "--yes"]]);
     assert.equal((await send({ project: "a", name: "bot", type: "nope" })).status, 400);
@@ -252,7 +333,7 @@ describe("tools panel", () => {
     const runCommand = async (_project, args) => { calls.push(args); return { status: 0, stderr: "", stdout: "ok" }; };
     const started = await serverFor({ projects: [{ id: "a", name: "a", root: "/projects/a" }], runCommand });
     const origin = new URL(started.url).origin;
-    const send = (body) => fetch(`${origin}/api/tools`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify(body) });
+    const send = (body) => fetch(`${origin}/api/tools`, { method: "POST", headers: { "content-type": "application/json", origin, "x-flisk-token": started.token }, body: JSON.stringify(body) });
     assert.equal((await send({ project: "a", tool: "doctor-fix-preview" })).status, 200);
     assert.equal((await send({ project: "a", tool: "doctor-fix-apply" })).status, 200);
     assert.equal((await send({ project: "a", tool: "up-preview" })).status, 200);
@@ -297,12 +378,12 @@ describe("Build with AI", () => {
     const started = await serverFor({ projects: [], claudeDesktopApp: () => "/Applications/Claude.app", openAiApp: async (app, prompt) => { opened.push([app, prompt]); } });
     const response = await fetch(new URL("/api/ai/build", started.url), {
       method: "POST",
-      headers: { "x-tdk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "Build an app with TDK" }),
+      headers: { "x-flisk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Build an app with Flisk" }),
     });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true, opened: "claude-desktop" });
-    assert.deepEqual(opened, [["/Applications/Claude.app", "Build an app with TDK"]]);
+    assert.deepEqual(opened, [["/Applications/Claude.app", "Build an app with Flisk"]]);
   });
 
   it("reports no desktop app, so the client shows the web chats, and opens nothing", async () => {
@@ -310,8 +391,8 @@ describe("Build with AI", () => {
     const started = await serverFor({ projects: [], claudeDesktopApp: () => null, openAiApp: async () => { opened.push(true); } });
     const response = await fetch(new URL("/api/ai/build", started.url), {
       method: "POST",
-      headers: { "x-tdk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "Build an app with TDK" }),
+      headers: { "x-flisk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Build an app with Flisk" }),
     });
     assert.deepEqual(await response.json(), { ok: true, opened: null });
     assert.equal(opened.length, 0);
@@ -322,7 +403,7 @@ describe("Build with AI", () => {
     for (const body of [{ prompt: "" }, { prompt: "x".repeat(14_337) }]) {
       const response = await fetch(new URL("/api/ai/build", started.url), {
         method: "POST",
-        headers: { "x-tdk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
+        headers: { "x-flisk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
         body: JSON.stringify(body),
       });
       assert.equal(response.status, 400);
@@ -335,8 +416,8 @@ describe("Build with AI failures and token savings in the projects API", () => {
     const started = await serverFor({ projects: [], claudeDesktopApp: () => "/Applications/Claude.app", openAiApp: async () => { throw new Error("open exited with code 1"); } });
     const response = await fetch(new URL("/api/ai/build", started.url), {
       method: "POST",
-      headers: { "x-tdk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
-      body: JSON.stringify({ prompt: "Build an app with TDK" }),
+      headers: { "x-flisk-token": started.token, origin: new URL(started.url).origin, "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "Build an app with Flisk" }),
     });
     assert.equal(response.status, 500);
   });
@@ -346,7 +427,7 @@ describe("Build with AI failures and token savings in the projects API", () => {
     writeFileSync(join(root, "Tiltfile"), "x".repeat(40));
     const runCommand = async (_project, args) => ({ status: 0, stderr: "", stdout: JSON.stringify({ data: args[0] === "status" ? { resources: [], stacks: [], ports: [], tilt: {} } : { services: [] } }) });
     const started = await serverFor({ projects: [{ id: "shop", name: "shop", root }], runCommand, dockerCheck: async () => true });
-    const headers = { "x-tdk-token": started.token };
+    const headers = { "x-flisk-token": started.token };
     const pending = await (await fetch(new URL("/api/projects?fast=1", started.url), { headers })).json();
     assert.equal(pending.projects[0].pending, true);
     assert.equal("tokens" in pending.projects[0], false);
@@ -363,10 +444,10 @@ describe("Build with AI failures and token savings in the projects API", () => {
 });
 
 describe("Open project", () => {
-  it("adds an existing TDK project once, and refuses folders without .tdk/project.json", async () => {
+  it("adds an existing Flisk project once, and refuses folders without .tdk/project.json", async () => {
     const started = await serverFor({ projects: [], probe: async () => supported });
     const origin = new URL(started.url).origin;
-    const add = (path) => fetch(`${origin}/api/projects/add`, { method: "POST", headers: { "content-type": "application/json", origin, "x-tdk-token": started.token }, body: JSON.stringify({ path }) });
+    const add = (path) => fetch(`${origin}/api/projects/add`, { method: "POST", headers: { "content-type": "application/json", origin, "x-flisk-token": started.token }, body: JSON.stringify({ path }) });
     const root = projectFixture("shop");
 
     const first = await add(root);
@@ -376,7 +457,7 @@ describe("Open project", () => {
     assert.equal(firstBody.project.name, "shop");
     assert.equal((await (await add(root)).json()).alreadyListed, true);
 
-    const empty = mkdtempSync(join(tmpdir(), "tdk-app-test-"));
+    const empty = mkdtempSync(join(tmpdir(), "flisk-app-test-"));
     tempDirs.push(empty);
     assert.equal((await add(empty)).status, 400);
     assert.equal((await add("/etc")).status, 400);

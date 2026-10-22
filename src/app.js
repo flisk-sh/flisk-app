@@ -45,7 +45,7 @@ export function resolveProjects(currentRoot, additionalRoots = []) {
   const roots = [...new Set([...(currentRoot ? [resolve(currentRoot)] : []), ...additionalRoots.map((root) => resolve(root))])];
   return roots.map((root) => {
     if (!isAbsolute(root) || !existsSync(join(root, PROJECT_FILE))) {
-      throw new Error(`Not a TDK project directory: ${root}`);
+      throw new Error(`Not a Flisk project directory: ${root}`);
     }
     return {
       id: `project-${createHash("sha256").update(root).digest("hex").slice(0, 10)}`,
@@ -187,7 +187,7 @@ export const TOOL_COMMANDS = {
   "down-preview": { argv: ["down", "--dry-run"], mutates: false },
   "runtime-check-assets": { argv: ["runtime", "--check-assets"], mutates: false },
 };
-// Optional infrastructure services `tdk config enable-infra` / `disable-infra` accept.
+// Optional infrastructure services `flisk config enable-infra` / `disable-infra` accept.
 export const INFRA_SERVICES = ["monitoring", "elk", "debezium", "golden_image", "verdaccio"];
 export const INFRA_TOOLS = { "infra-enable": "enable-infra", "infra-disable": "disable-infra" };
 
@@ -233,10 +233,20 @@ export function cleanupCandidates(home = homedir()) {
 // ---------- Persistent UI state (pins, hidden projects, collapsed sections, known project roots) ----------
 // The page's origin changes with the random port, so browser storage does not survive a restart; this file does.
 export function defaultStatePath() {
+  if (process.env.FLISK_APP_STATE) return process.env.FLISK_APP_STATE;
+  // The app was called TDK App before the rename; the old override keeps working.
   if (process.env.TDK_APP_STATE) return process.env.TDK_APP_STATE;
   return process.platform === "darwin"
-    ? join(homedir(), "Library", "Application Support", "TDK App", "state.json")
-    : join(homedir(), ".config", "tdk-app", "state.json");
+    ? join(homedir(), "Library", "Application Support", "Flisk App", "state.json")
+    : join(homedir(), ".config", "flisk-app", "state.json");
+}
+
+// The state file moved with the rename. Read the old location until the new one exists,
+// so pins, hidden projects and known roots survive the upgrade.
+export function legacyStatePaths() {
+  return process.platform === "darwin"
+    ? [join(homedir(), "Library", "Application Support", "TDK App", "state.json")]
+    : [join(homedir(), ".config", "tdk-app", "state.json")];
 }
 
 const STATE_LIST_LIMIT = 500;
@@ -256,10 +266,20 @@ export function normalizeState(raw) {
   };
 }
 
-export function readAppState(path = defaultStatePath()) {
+export function readAppState(path) {
+  const target = path ?? defaultStatePath();
   try {
-    return normalizeState(JSON.parse(readFileSync(path, "utf8")));
+    return normalizeState(JSON.parse(readFileSync(target, "utf8")));
   } catch {
+    // Fall back to the pre-rename file so the first launch after the rename keeps the user's layout.
+    // An explicit path that does not exist is simply empty.
+    if (!path) {
+      for (const legacy of legacyStatePaths()) {
+        try {
+          return normalizeState(JSON.parse(readFileSync(legacy, "utf8")));
+        } catch {}
+      }
+    }
     return normalizeState(null);
   }
 }
@@ -286,7 +306,7 @@ function readMachine(result) {
   try {
     envelope = JSON.parse(stdout);
   } catch {
-    // Some TDK versions print a diagnostic line before their compact JSON
+    // Some Flisk versions print a diagnostic line before their compact JSON
     // envelope. Preserve the structured result instead of treating the whole
     // response as invalid JSON.
     const lines = stdout.trim().split(/\r?\n/);
@@ -303,13 +323,13 @@ function readMachine(result) {
     }
   }
   if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
-    throw new Error(String(result.stderr ?? "").trim() || (result.status == null ? "TDK did not respond (timed out or could not start)." : `TDK returned invalid JSON (exit ${result.status}).`));
+    throw new Error(String(result.stderr ?? "").trim() || (result.status == null ? "Flisk did not respond (timed out or could not start)." : `Flisk returned invalid JSON (exit ${result.status}).`));
   }
   const errors = Array.isArray(envelope.errors) ? envelope.errors : [];
   if ((result.status !== 0 || errors.length) && envelope.data == null) {
-    throw new Error(errors.map((error) => error?.message).filter((message) => typeof message === "string" && message).join("\n") || String(result.stderr ?? "").trim() || "TDK command failed.");
+    throw new Error(errors.map((error) => error?.message).filter((message) => typeof message === "string" && message).join("\n") || String(result.stderr ?? "").trim() || "Flisk command failed.");
   }
-  if (envelope.data == null) throw new Error("TDK returned no data.");
+  if (envelope.data == null) throw new Error("Flisk returned no data.");
   return envelope.data;
 }
 
@@ -355,32 +375,49 @@ export function tiltProgress(data) {
   return { percent, total, ready, building, starting, errors, step };
 }
 
-let selectedTdkBinary = null;
+// The CLI ships as `flisk`; `tdk` is the legacy name that older installs still expose.
+const CLI_BINARY_NAMES = ["flisk", "tdk"];
+const CLI_FALLBACK_NAME = "flisk";
 
-function tdkBinaryCandidates(env = process.env) {
+let selectedCliBinary = null;
+
+// An explicit path always wins, so a project can pin the CLI it was built against.
+function cliBinaryOverride(env = process.env) {
+  const override = [env.FLISK_BIN, env.TDK_BIN].find((value) => typeof value === "string" && value.trim());
+  return override ? override.trim() : null;
+}
+
+export function cliBinaryCandidates(env = process.env) {
   const pathEntries = (env.PATH ?? "").split(delimiter).filter(Boolean);
   // Keep the app's native-first PATH for Colima/Lima, but prefer conventional
-  // package-manager installs for TDK over older copies in language-manager bins.
+  // package-manager installs for the CLI over older copies in language-manager bins.
   const preferredEntries = ["/opt/homebrew/bin", "/usr/local/bin", join(homedir(), ".bun", "bin"), join(homedir(), ".local", "bin"), join(homedir(), ".n", "bin")];
-  return [...new Set([...preferredEntries, ...pathEntries])]
-    .map((entry) => join(entry, "tdk"))
+  const directories = [...new Set([...preferredEntries, ...pathEntries])];
+  // The current `flisk` name wins over the legacy `tdk` alias wherever both are installed.
+  return CLI_BINARY_NAMES.flatMap((name) => directories.map((entry) => join(entry, name)))
     .filter((candidate) => existsSync(candidate));
 }
 
 export function resolveTdkBinary(env = process.env) {
-  if (typeof env.TDK_BIN === "string" && env.TDK_BIN.trim()) return env.TDK_BIN.trim();
-  if (selectedTdkBinary && existsSync(selectedTdkBinary)) return selectedTdkBinary;
-  return tdkBinaryCandidates(env)[0] ?? "tdk";
+  const override = cliBinaryOverride(env);
+  if (override) return override;
+  if (selectedCliBinary && existsSync(selectedCliBinary)) return selectedCliBinary;
+  return cliBinaryCandidates(env)[0] ?? CLI_FALLBACK_NAME;
 }
 
-export function runTdk(project, args, { binary = "tdk", timeoutMs = 30_000, detached = false } = {}) {
+// The name the CLI is invoked by, used in messages and in the argv the UI shows.
+export function cliCommandName(env = process.env) {
+  return basename(resolveTdkBinary(env));
+}
+
+export function runTdk(project, args, { binary = CLI_FALLBACK_NAME, timeoutMs = 30_000, detached = false } = {}) {
   return new Promise((resolvePromise) => {
     let savedPort;
     try {
       const value = JSON.parse(readFileSync(join(project.root, PORT_FILE), "utf8"));
       if (Number.isInteger(value.port) && value.port > 0 && value.port <= 65535) savedPort = value.port;
     } catch {}
-    // GUI apps inherit a much smaller PATH than a terminal. TDK projects on
+    // GUI apps inherit a much smaller PATH than a terminal. Flisk projects on
     // macOS commonly install Bun under ~/.bun/bin, so expose that location to
     // child CLI processes even when the app was launched from Finder/Launchpad.
     const pathEntries = [join(homedir(), ".bun", "bin"), ...(process.env.PATH ?? "").split(delimiter)].filter(Boolean);
@@ -389,7 +426,7 @@ export function runTdk(project, args, { binary = "tdk", timeoutMs = 30_000, deta
       PATH: [...new Set(pathEntries)].join(delimiter),
       ...(savedPort ? { TILT_PORT: String(savedPort) } : {}),
     };
-    const command = binary === "tdk" ? resolveTdkBinary(env) : binary;
+    const command = CLI_BINARY_NAMES.includes(binary) ? resolveTdkBinary(env) : binary;
     const child = spawn(command, args, {
       cwd: project.root,
       env,
@@ -444,25 +481,47 @@ const INSTALL_URL = "https://github.com/flisk-sh/flisk#install";
 // The CLI starts and stops through `up` and `down` (no scoped start/stop/restart exist).
 const LIFECYCLE_COMMANDS = ["up", "down"];
 
-// Non-mutating probe: `tdk --version` for display and `tdk <cmd> --help` per lifecycle command.
-// Commander prints command-specific help ("Usage: tdk <cmd>") only when the command exists;
-// an older CLI falls back to the root help ("Usage: tdk [options] [command]").
+// Commander prints command-specific help ("Usage: flisk up|deploy [options]") only when the
+// command exists; an older CLI falls back to the root help ("Usage: flisk [options] [command]").
+// The program name is whatever the CLI prints, so a renamed binary still matches.
+function usageOf(help) {
+  const match = /^Usage:\s+(\S+)(?:\s+(\S+))?/m.exec(help?.stdout ?? "");
+  if (!match) return null;
+  return { program: match[1], command: match[2] ?? "" };
+}
+
+function supportsLifecycleCommand(help, command) {
+  if (!help || help.status !== 0) return false;
+  const usage = usageOf(help);
+  if (!usage) return false;
+  // Commander lists command aliases together: "up|deploy" still answers `up`.
+  return usage.command.split("|").includes(command);
+}
+
+// The CLI is installed as `flisk`; the legacy `tdk` name is still accepted from older installs.
+export function cliLabel(program) {
+  // The legacy binary is still the old CLI, so it keeps the old name in messages.
+  if (program === "tdk") return "TDK CLI";
+  if (program === "flisk") return "Flisk CLI";
+  return `${program} CLI`;
+}
+
+// Non-mutating probe: `<cli> --version` for display and `<cli> <cmd> --help` per lifecycle command.
 export async function probeCli(execute, cwd = process.cwd()) {
   const probe = { root: cwd };
   const base = { minVersion: MIN_CLI_VERSION, installUrl: INSTALL_URL, version: null };
-  // A machine can have stale TDK copies earlier on PATH. Try installed
+  // A machine can have stale CLI copies earlier on PATH. Try installed
   // candidates until one answers, then use that same binary for all commands.
-  const candidates = typeof process.env.TDK_BIN === "string" && process.env.TDK_BIN.trim()
-    ? [process.env.TDK_BIN.trim()]
-    : tdkBinaryCandidates();
-  let binary = candidates[0] ?? "tdk";
+  const override = cliBinaryOverride();
+  const candidates = override ? [override] : cliBinaryCandidates();
+  let binary = candidates[0] ?? CLI_FALLBACK_NAME;
   let versionResult = { status: null, stdout: "", stderr: "" };
   for (const candidate of candidates.length ? candidates : [binary]) {
     const result = await execute(probe, ["--version"], { binary: candidate, timeoutMs: 10_000 });
     if (result.status === 0) {
       binary = candidate;
       versionResult = result;
-      selectedTdkBinary = candidate;
+      selectedCliBinary = candidate;
       break;
     }
     versionResult = result;
@@ -472,34 +531,39 @@ export async function probeCli(execute, cwd = process.cwd()) {
       execute(probe, [command, "--help"], { binary, timeoutMs: 10_000 }),
     ))
     : [];
+  const program = helps.map((help) => usageOf(help)).find(Boolean)?.program ?? basename(binary);
+  const label = cliLabel(program);
   if (versionResult.status !== 0) {
     const missing = /ENOENT/.test(versionResult.stderr);
     return {
       ...base,
+      program,
+      label,
       state: missing ? "missing" : "failed",
       lifecycle: false,
       message: missing
-        ? `The tdk CLI was not found. Install the TDK CLI, or set TDK_BIN to its path.`
-        : `The tdk CLI did not respond to a version check (${versionResult.stderr.trim() || "timeout or non-zero exit"}). Check TDK_BIN and your install.`,
+        ? `The ${label} was not found. Install the ${label}, or set FLISK_BIN (or TDK_BIN) to its path.`
+        : `The ${label} did not respond to a version check (${versionResult.stderr.trim() || "timeout or non-zero exit"}). Check FLISK_BIN and your install.`,
     };
   }
   const version = versionResult.stdout.trim().split(/\s+/).pop() || null;
   for (const [index, command] of LIFECYCLE_COMMANDS.entries()) {
-    const help = helps[index];
-    if (help.status !== 0 || !new RegExp(`^Usage: tdk ${command}\\b`, "m").test(help.stdout)) {
+    if (!supportsLifecycleCommand(helps[index], command)) {
       return {
         ...base,
         version,
+        program,
+        label,
         state: "unsupported",
         lifecycle: false,
-        message: `TDK CLI ${version ?? "(unknown version)"} does not support \`tdk ${LIFECYCLE_COMMANDS.join("/")}\`. Update the CLI to enable Start, Stop and Restart; status, logs and endpoints still work.`,
+        message: `${label} ${version ?? "(unknown version)"} does not support \`${program} ${LIFECYCLE_COMMANDS.join("/")}\`. Update the CLI to enable Start, Stop and Restart; status, logs and endpoints still work.`,
       };
     }
   }
-  return { ...base, version, state: "supported", lifecycle: true, message: null };
+  return { ...base, version, program, label, state: "supported", lifecycle: true, message: null };
 }
 
-// Older TDK CLIs omit directUrl. A bring-your-own app runs on the host at its declared port, so that is the address.
+// Older CLI versions omit directUrl. A bring-your-own app runs on the host at its declared port, so that is the address.
 export function directUrlFromPort(resource) {
   const port = resource?.port;
   return resource?.type === "bring-your-own" && Number.isInteger(port) && port > 0 && port <= 65535 ? `http://localhost:${port}` : null;
@@ -511,7 +575,7 @@ async function projectStatus(project, execute) {
   try {
     services = readMachine(await execute(project, ["networks", "--json"])).services ?? [];
   } catch {}
-  if (!status || typeof status !== "object" || Array.isArray(status)) throw new Error("TDK returned an unexpected status format.");
+  if (!status || typeof status !== "object" || Array.isArray(status)) throw new Error("Flisk returned an unexpected status format.");
   const objects = (value) => (Array.isArray(value) ? value.filter((item) => item && typeof item === "object" && !Array.isArray(item)) : []);
   const urls = new Map(objects(services).map((service) => [service.name, service.url]));
   return {
@@ -526,7 +590,7 @@ async function projectStatus(project, execute) {
   };
 }
 
-// `tdk status --tilt` reports whichever Tilt answers on the shared UI port, and that Tilt can belong to another
+// `flisk status --tilt` reports whichever Tilt answers on the shared UI port, and that Tilt can belong to another
 // project. A project is running only when that Tilt has a resource named like one of the project's own resources.
 export function isOwnTiltRunning(tilt, ownResources) {
   if (!tilt || typeof tilt !== "object") return false;
@@ -536,7 +600,7 @@ export function isOwnTiltRunning(tilt, ownResources) {
   return ownResources.some((resource) => typeof resource.name === "string" && tiltNames.has(resource.name));
 }
 
-// Turns `tdk doctor --json` data into a 0-100 score: pass = 1, warning = 0.5, fail = 0, skipped ignored.
+// Turns `flisk doctor --json` data into a 0-100 score: pass = 1, warning = 0.5, fail = 0, skipped ignored.
 export function summarizeDoctor(data) {
   const raw = data && typeof data === "object" && Array.isArray(data.checks) ? data.checks : [];
   const checks = raw.filter((check) => check && typeof check === "object").map((check) => ({
@@ -648,7 +712,8 @@ function findConflicts(snapshots) {
   for (const snapshot of snapshots) {
     for (const port of snapshot.ports) {
       const claimants = owners.get(port.hostPort) ?? [];
-      claimants.push({ projectId: snapshot.project.id, label: `${snapshot.project.name} (${port.name})` });
+      // The path tells two checkouts of the same project apart, so the list stays actionable.
+      claimants.push({ projectId: snapshot.project.id, label: `${snapshot.project.name} (${port.name})`, path: snapshot.project.root });
       owners.set(port.hostPort, claimants);
     }
   }
@@ -656,7 +721,7 @@ function findConflicts(snapshots) {
 }
 
 export function startAppServer({ projects, projectsReady = Promise.resolve(), probe = probeCli, host = "127.0.0.1", port = 0, token = randomBytes(32).toString("hex"), runCommand = runTdk, openPath = openProjectPath, claudeDesktopApp = findClaudeDesktopApp, openAiApp = openInClaudeApp, dockerCheck = checkDocker, dockerRestart = restartContainerRuntime, prewarm = false, statePath = null }) {
-  if (host !== "127.0.0.1") throw new Error("TDK App can only bind to 127.0.0.1.");
+  if (host !== "127.0.0.1") throw new Error("Flisk App can only bind to 127.0.0.1.");
   let capability = null;
   let updating = false;
   const tokenCache = createTokenCache();
@@ -773,7 +838,8 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
     if (capability?.lifecycle) return capability;
     const result = await probe(runCommand).catch((error) => ({
       state: "failed", lifecycle: false, version: null, minVersion: MIN_CLI_VERSION, installUrl: INSTALL_URL,
-      message: `The tdk CLI could not be checked: ${error instanceof Error ? error.message : String(error)}`,
+      program: CLI_FALLBACK_NAME, label: cliLabel(CLI_FALLBACK_NAME),
+      message: `The ${cliLabel(CLI_FALLBACK_NAME)} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
     }));
     capability = result;
     return result;
@@ -794,7 +860,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
           "x-content-type-options": "nosniff",
           "content-security-policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
         });
-        return response.end(HTML.replace("__TDK_CENTER_TOKEN__", token).replaceAll("tdk center", "tdk-app"));
+        return response.end(HTML.replace("__FLISK_CENTER_TOKEN__", token));
       }
       if (CLIENT_SCRIPTS.has(url.pathname) && request.method === "GET") {
         response.writeHead(200, {
@@ -805,7 +871,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         return response.end(CLIENT_SCRIPTS.get(url.pathname));
       }
       if (!url.pathname.startsWith("/api/")) return sendJson(response, 404, { error: "Not found." });
-      if (!sameSecret(request.headers["x-tdk-token"]?.toString() ?? "", token)) return sendJson(response, 403, { error: "Invalid session token." });
+      if (!sameSecret(request.headers["x-flisk-token"]?.toString() ?? "", token)) return sendJson(response, 403, { error: "Invalid session token." });
       if (request.headers.origin && request.headers.origin !== origin) return sendJson(response, 403, { error: "Invalid origin." });
       if (request.method !== "GET" && request.method !== "HEAD" && request.headers.origin !== origin) return sendJson(response, 403, { error: "A same-origin request is required." });
 
@@ -813,7 +879,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         return sendJson(response, 200, await cliCapability());
       }
       if (url.pathname === "/api/cli/update" && request.method === "POST") {
-        // Runs the CLI's own `tdk upgrade`; never elevates privileges. On failure the client shows the manual command.
+        // Runs the CLI's own `flisk upgrade`; never elevates privileges. On failure the client shows the manual command.
         if (updating) return sendJson(response, 409, { error: "An update is already running." });
         updating = true;
         try {
@@ -870,7 +936,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
             ...tokensFor(snapshot),
             conflicts: conflicts.filter((conflict) => conflict.claimants.some((claimant) => claimant.projectId === snapshot.project.id)).map((conflict) => ({
               port: conflict.port,
-              claimants: conflict.claimants.map((claimant) => claimant.label),
+              claimants: conflict.claimants.map((claimant) => ({ label: claimant.label, path: claimant.path })),
             })),
           })),
         });
@@ -888,14 +954,14 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         if (!project || typeof body.project !== "string" || !["start", "stop", "restart"].includes(body.operation)) return sendJson(response, 400, { error: "Choose a valid project and lifecycle action." });
         const cli = await cliCapability();
         if (!cli.lifecycle) {
-          return sendJson(response, 409, { error: cli.message, code: "cli_unsupported", cli: { state: cli.state, version: cli.version, minVersion: cli.minVersion, installUrl: cli.installUrl } });
+          return sendJson(response, 409, { error: cli.message, code: "cli_unsupported", cli: { state: cli.state, version: cli.version, minVersion: cli.minVersion, installUrl: cli.installUrl, program: cli.program, label: cli.label } });
         }
         const hasStack = body.stack != null && body.stack !== "";
         if (hasStack && !isArgName(body.stack)) return sendJson(response, 400, { error: "Invalid stack name." });
         if (body.resources != null && (!Array.isArray(body.resources) || body.resources.length > 30 || !body.resources.every((name) => isArgName(name)))) return sendJson(response, 400, { error: "Invalid resource selection." });
         const scoped = hasStack || Boolean(body.resources?.length);
-        // `tdk down` has no scope, so stop and restart act on the whole project.
-        if (scoped && body.operation !== "start") return sendJson(response, 400, { error: "TDK can only stop or restart a whole project. Start accepts a stack or resources." });
+        // `flisk down` has no scope, so stop and restart act on the whole project.
+        if (scoped && body.operation !== "start") return sendJson(response, 400, { error: "Flisk can only stop or restart a whole project. Start accepts a stack or resources." });
         const dockerOk = await Promise.resolve(dockerCheck()).catch(() => false);
         if (!dockerOk) return sendJson(response, 503, { error: `${DOCKER_UNAVAILABLE}${lowDiskNote()}`, code: "docker_unavailable", lowDisk: lowDiskNote() !== "" });
         const up = ["up", "--json"];
@@ -940,7 +1006,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         } finally {
           job.endedAt = Date.now();
         }
-        return sendJson(response, 200, { data: result, message: result.startedDetached ? "Startup launched; TDK will report readiness as it settles." : "TDK lifecycle operation completed." });
+        return sendJson(response, 200, { data: result, message: result.startedDetached ? "Startup launched; Flisk will report readiness as it settles." : "Flisk lifecycle operation completed." });
       }
       if (url.pathname === "/api/jobs" && request.method === "GET") {
         const recent = [...jobs.values()].filter((job) => job.state === "running" || job.detached || Date.now() - (job.endedAt ?? 0) < 120_000);
@@ -1041,7 +1107,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
           invalidateStatus(project);
           doctorCache.delete(project.id);
         }
-        return sendJson(response, 200, { ...actionResult(raw), tool: body.tool, argv: ["tdk", ...argv] });
+        return sendJson(response, 200, { ...actionResult(raw), tool: body.tool, argv: [cliCommandName(), ...argv] });
       }
       if (url.pathname === "/api/config" && request.method === "POST") {
         const body = await readBody(request);
@@ -1080,7 +1146,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
         });
       }
       if (url.pathname === "/api/projects/add" && request.method === "POST") {
-        // Registers an existing TDK project that the scan did not find, for example one outside the common folders.
+        // Registers an existing Flisk project that the scan did not find, for example one outside the common folders.
         const body = await readBody(request);
         const root = allowedParent(body.path);
         if (!root) return sendJson(response, 400, { error: "Choose an existing folder inside your home directory." });
@@ -1116,7 +1182,7 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
           if (!projects.some((entry) => entry.root === created.root)) projects.push(created);
           return sendJson(response, 200, { ...result, project: { id: created.id, name: created.name, path: created.root } });
         }
-        return sendJson(response, 200, { ...result, ok: false, output: result.output || "TDK did not create a project here." });
+        return sendJson(response, 200, { ...result, ok: false, output: result.output || "Flisk did not create a project here." });
       }
       if (url.pathname === "/api/ai/build" && request.method === "POST") {
         // Tries the Claude desktop app first. When it is not installed the client falls back to the web chats.

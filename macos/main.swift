@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     var server: Process?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if let mode = ProcessInfo.processInfo.environment["TDK_APPEARANCE"] { NSApp.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua) }
+        if let mode = ProcessInfo.processInfo.environment["FLISK_APPEARANCE"] { NSApp.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua) }
         let config = WKWebViewConfiguration()
         // Lets the page switch to its translucent theme only inside the native window.
         config.userContentController.addUserScript(WKUserScript(source: "document.documentElement.classList.add('native')", injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -25,10 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         webView.setValue(false, forKey: "drawsBackground")
         webView.navigationDelegate = self
         webView.uiDelegate = self
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: Double(ProcessInfo.processInfo.environment["TDK_WINDOW_WIDTH"] ?? "") ?? 1180, height: 780),
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: Double(ProcessInfo.processInfo.environment["FLISK_WINDOW_WIDTH"] ?? "") ?? 1180, height: 780),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                           backing: .buffered, defer: false)
-        window.title = "TDK App"
+        window.title = "Flisk App"
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         // Content runs under the (transparent) title bar; a thin strip keeps the window draggable.
@@ -89,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // The login shell sources user profiles, which can put Intel Homebrew
         // ahead of the native Apple Silicon tools. Reapply this path after the
         // login shell starts so Colima resolves the native limactl first.
-        environment["TDK_APP_PATH"] = appPath
+        environment["FLISK_APP_PATH"] = appPath
         process.environment = environment
         // Start a login shell so Node managers (nvm, bun) initialize their PATH.
         process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh")
@@ -97,10 +97,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // set it there), then exec that absolute path. Exit 127 means node was not found.
         let script = """
         NODE=$(command -v node) || { echo "node not found on PATH; install Node.js 22.12+ or add it to ~/.zprofile" >&2; exit 127; }
-        export PATH="$TDK_APP_PATH:$PATH"; unset TDK_APP_PATH
+        export PATH="$FLISK_APP_PATH:$PATH"; unset FLISK_APP_PATH
         exec "$NODE" "$1" --no-open
         """
-        process.arguments = ["-l", "-c", script, "tdk-app", "\(resources)/app/src/cli.js"]
+        process.arguments = ["-l", "-c", script, "flisk-app", "\(resources)/app/src/cli.js"]
         let out = Pipe(), err = Pipe(), stdin = Pipe()
         process.standardOutput = out
         process.standardError = err
@@ -142,18 +142,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         decisionHandler(.allow)
     }
 
-    // Developer aid: TDK_SNAPSHOT=/path.png renders the page to an image and exits.
-    // TDK_SNAPSHOT_JS runs first (e.g. to open a project); TDK_APPEARANCE=dark|light forces the theme.
+    // Developer aid: FLISK_SNAPSHOT=/path.png renders the page to an image and exits.
+    // FLISK_SNAPSHOT_JS runs first (e.g. to open a project); FLISK_APPEARANCE=dark|light forces the theme.
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         let env = ProcessInfo.processInfo.environment
-        guard let path = env["TDK_SNAPSHOT"], webView.url?.host == "127.0.0.1" else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + (Double(env["TDK_SNAPSHOT_DELAY"] ?? "") ?? 4.0)) {
-            let js = env["TDK_SNAPSHOT_JS"] ?? "0"
+        guard let path = env["FLISK_SNAPSHOT"], webView.url?.host == "127.0.0.1" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (Double(env["FLISK_SNAPSHOT_DELAY"] ?? "") ?? 4.0)) {
+            let js = env["FLISK_SNAPSHOT_JS"] ?? "0"
             webView.evaluateJavaScript(js) { _, _ in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     webView.takeSnapshot(with: nil) { image, _ in
                         guard let image = image else { exit(2) }
-                        let dark = env["TDK_APPEARANCE"] == "dark"
+                        let dark = env["FLISK_APPEARANCE"] == "dark"
                         let out = NSImage(size: image.size)
                         out.lockFocus()
                         (dark ? NSColor(white: 0.13, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill()
@@ -190,7 +190,7 @@ let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)
 let menu = NSMenu(), appItem = NSMenuItem(), appMenu = NSMenu()
-appMenu.addItem(withTitle: "Quit TDK App", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+appMenu.addItem(withTitle: "Quit Flisk App", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
 appItem.submenu = appMenu; menu.addItem(appItem)
 let edit = NSMenuItem(), editMenu = NSMenu(title: "Edit")
 editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")

@@ -1,8 +1,12 @@
-# TDK App
+# Flisk App
 
-TDK App is a local browser dashboard for operating TDK projects. It shows project, stack, and resource health, recent logs, endpoints, and configured port conflicts. It can start, stop, or restart a project, stack, or resource and open its folder or a terminal. Recent logs, failed config runs and doctor issues can have **Inspect with** links (Grok, Claude, Codex) that open the chat with that output already in the prompt. The links are off by default: turn on **Inspect with AI** in the Recent logs dialog to show them. Secret-looking values are redacted and long output is trimmed, and nothing is sent until you click one of the links.
+Flisk App is a local browser dashboard for operating Flisk projects. It shows project, stack, and resource health, recent logs, endpoints, and configured port conflicts. It can start, stop, or restart a project, stack, or resource and open its folder or a terminal. Recent logs, failed config runs and doctor issues can have **Inspect with** links (Grok, Claude, Codex) that open the chat with that output already in the prompt. The links are off by default: turn on **Inspect with AI** in the Recent logs dialog to show them. Secret-looking values are redacted and long output is trimmed, and nothing is sent until you click one of the links.
 
-The app runs on your machine and uses the installed `tdk` CLI for status and lifecycle operations. It does not connect to a hosted control plane. Start runs `tdk up` (optionally for one stack or resources). Stop runs `tdk down` and Restart runs `tdk down` then `tdk up`; both act on the whole project because `tdk down` has no scope. On load the app runs non-mutating probes (`tdk --version`, `tdk up --help`, `tdk down --help`). If the CLI is older, missing, or not responding, lifecycle controls are disabled with an explanation, `POST /api/actions` returns HTTP 409 (`cli_unsupported`) without running anything, and status, endpoints, ports, logs, and folder/terminal actions keep working.
+> Renamed from TDK App to match the CLI. The macOS bundle, the npm package (`@flisk-sh/flisk-app`), the command (`flisk-app`) and the state file location all changed. The installer removes the old `TDK App.app`, and the old state file is read once so pins, hidden projects and known roots survive.
+
+The app runs on your machine and uses the installed Flisk CLI for status and lifecycle operations. It does not connect to a hosted control plane. Start runs `flisk up` (optionally for one stack or resources). Stop runs `flisk down` and Restart runs `flisk down` then `flisk up`; both act on the whole project because `flisk down` has no scope. On load the app runs non-mutating probes (`flisk --version`, `flisk up --help`, `flisk down --help`). If the CLI is older, missing, or not responding, lifecycle controls are disabled with an explanation, `POST /api/actions` returns HTTP 409 (`cli_unsupported`) without running anything, and status, endpoints, ports, logs, and folder/terminal actions keep working.
+
+The CLI is found by name, not by a hardcoded command: the app looks for `flisk` first and still accepts the legacy `tdk` name from older installs. It also matches the CLI's own usage output, so a renamed binary (or a command alias such as `up|deploy`) is detected correctly.
 
 ## Screenshots
 
@@ -18,11 +22,25 @@ The app runs on your machine and uses the installed `tdk` CLI for status and lif
 
 ![Project in light mode](docs/screenshots/project-light.png)
 
-Screenshots are produced by the app itself: `TDK_SNAPSHOT=out.png TDK_APPEARANCE=dark "dist/TDK App.app/Contents/MacOS/TDKApp"` renders the window to a PNG and exits (`TDK_SNAPSHOT_JS` runs a script first, for example to open a project). Account names are masked in the UI, so paths appear as `~/...`.
+Screenshots are produced by the app itself: `FLISK_SNAPSHOT=out.png FLISK_APPEARANCE=dark "dist/Flisk App.app/Contents/MacOS/FliskApp"` renders the window to a PNG and exits (`FLISK_SNAPSHOT_JS` runs a script first, for example to open a project). Account names are masked in the UI, so paths appear as `~/...`.
+
+## Install the Flisk CLI
+
+The app drives the Flisk CLI, so install it first. The install script never runs `sudo` and writes to `/usr/local/bin` when that is writable, otherwise to `~/.local/bin`:
+
+```sh
+curl -fsSL https://flisk.sh/install.sh | sh
+```
+
+To update an existing install, run the same command again, or use the CLI's own updater:
+
+```sh
+flisk upgrade --yes
+```
 
 ## Run from a checkout
 
-Requires Node.js 22.12 or newer and TDK CLI on `PATH`.
+Requires Node.js 22.12 or newer and the Flisk CLI on `PATH`.
 
 ```sh
 npm start
@@ -32,22 +50,22 @@ npm start -- --no-scan --project ~/src/storefront
 npm start -- --port 43120
 ```
 
-TDK App automatically searches common development locations, including `/var/www`, `~/ollama`, `~/Codex`, `~/Documents/Codex`, `~/GitHub`, `~/Documents/GitHub`, `~/src`, `~/Projects`, and `~/Developer`. It also includes the project containing the current directory. Scans are bounded to eight directory levels and skip dependency, build, and version-control folders. Use repeatable `--scan-root` options to add locations, `--project` to add a specific project root, or `--no-scan` to disable the common-location scan. Every selected project must contain `.tdk/project.json`.
+Flisk App automatically searches common development locations, including `/var/www`, `~/ollama`, `~/Codex`, `~/Documents/Codex`, `~/GitHub`, `~/Documents/GitHub`, `~/src`, `~/Projects`, and `~/Developer`. It also includes the project containing the current directory. Scans are bounded to eight directory levels and skip dependency, build, and version-control folders. Use repeatable `--scan-root` options to add locations, `--project` to add a specific project root, or `--no-scan` to disable the common-location scan. Every selected project must contain `.tdk/project.json`.
 
 `--port 0` (the default) selects an available local port.
 
-The server binds only to `127.0.0.1`, protects the browser session with a random in-memory token, and exits with the app process. Closing the dashboard does not stop project resources. The terminal dashboard `tdk ui` remains available independently.
+The server binds only to `127.0.0.1`, protects the browser session with a random in-memory token, and exits with the app process. Closing the dashboard does not stop project resources. The terminal dashboard `flisk ui` remains available independently.
 
 ## macOS app
 
 A lightweight native app (about 200 KB, a WKWebView shell, no Electron) that runs the same server in its own window:
 
 ```sh
-npm run install:mac     # builds, then installs "TDK App" into /Applications (or ~/Applications)
-open -a "TDK App"
+npm run install:mac     # builds, then installs "Flisk App" into /Applications (or ~/Applications)
+open -a "Flisk App"
 ```
 
-The installer needs no sudo. It copies the app, registers it with Launch Services so it appears in Launchpad and Spotlight, and replaces any previous copy. To build without installing, run `npm run build:mac` and open `dist/TDK App.app`. The icon is generated by `macos/make-icon.swift`; the result is committed as `macos/AppIcon.icns`.
+The installer needs no sudo. It copies the app, registers it with Launch Services so it appears in Launchpad and Spotlight, and replaces any previous copy. To build without installing, run `npm run build:mac` and open `dist/Flisk App.app`. The icon is generated by `macos/make-icon.swift`; the result is committed as `macos/AppIcon.icns`.
 
 Requires Xcode Command Line Tools to build and Node.js 22.12+ on your login-shell `PATH` to run. The app starts the server with `--no-open` and stops it when you quit.
 
@@ -56,8 +74,8 @@ Requires Xcode Command Line Tools to build and Node.js 22.12+ on your login-shel
 After a package release, install the published package globally and run:
 
 ```sh
-npm install --global @flisk-sh/tdk-app
-tdk-app
+npm install --global @flisk-sh/flisk-app
+flisk-app
 ```
 
 The package is not published yet; use the checkout instructions above until a release is available.
@@ -76,6 +94,6 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-They cover the sidebar toggle state and dialog names. They use a local fixture server and do not start TDK projects or open external apps.
+They cover the sidebar toggle state and dialog names. They use a local fixture server and do not start Flisk projects or open external apps.
 
-The server uses Node.js built-ins only. Set `TDK_BIN` to the path of a TDK CLI executable if it is not named `tdk` or is not on `PATH`.
+The server uses Node.js built-ins only. The app discovers the CLI on `PATH` as `flisk` (preferred) or the legacy `tdk`. Set `FLISK_BIN` (or `TDK_BIN`) to the path of a CLI executable when it is installed under another name or is not on `PATH`.

@@ -1,6 +1,6 @@
 import AppKit
 
-// Draws the TDK App icon at 1024px and writes an .iconset for iconutil.
+// Draws the Flisk App icon at 1024px and writes an .iconset for iconutil.
 let size: CGFloat = 1024
 func render(_ px: Int) -> Data {
     let s = CGFloat(px)
@@ -40,10 +40,10 @@ func render(_ px: Int) -> Data {
     ctx.setStrokeColor(NSColor.white.cgColor)
     ctx.addArc(center: center, radius: ringRadius, startAngle: .pi / 2, endAngle: -.pi, clockwise: true); ctx.strokePath()
 
-    // "T" monogram.
+    // "F" monogram.
     let font = NSFont.systemFont(ofSize: rect.width * 0.36, weight: .bold)
     let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
-    let text = NSAttributedString(string: "T", attributes: attrs)
+    let text = NSAttributedString(string: "F", attributes: attrs)
     let ts = text.size()
     text.draw(at: CGPoint(x: center.x - ts.width / 2, y: center.y - ts.height / 2))
     image.unlockFocus()
