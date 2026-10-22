@@ -14,7 +14,7 @@ let empty;
 let scratch;
 
 before(async () => {
-  scratch = mkdtempSync(join(tmpdir(), "tdk-app-open-"));
+  scratch = mkdtempSync(join(tmpdir(), "flisk-app-open-"));
   project = join(scratch, "demo-shop");
   empty = join(scratch, "not-a-project");
   mkdirSync(join(project, ".tdk"), { recursive: true });
@@ -50,7 +50,7 @@ test("a folder without .tdk/project.json is refused and nothing is added", async
   await submitPath(empty);
   await page.locator("#form-dialog .form-error:not([hidden])").waitFor();
   assert.match(await page.locator("#form-dialog .form-error").innerText(), /could not complete|project\.json/i);
-  assert.equal((await (await fetch(`${new URL(app.url).origin}/api/projects`, { headers: { "x-tdk-token": app.token } })).json()).projects.length, 0);
+  assert.equal((await (await fetch(`${new URL(app.url).origin}/api/projects`, { headers: { "x-flisk-token": app.token } })).json()).projects.length, 0);
   await page.locator("#form-dialog [data-close]").first().click();
 });
 

@@ -16,7 +16,7 @@ afterEach(async () => {
   for (const directory of tempDirs.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-function tempDir(prefix = "tdk-crash-") {
+function tempDir(prefix = "flisk-crash-") {
   const directory = mkdtempSync(join(tmpdir(), prefix));
   tempDirs.push(directory);
   return directory;
@@ -51,7 +51,7 @@ function raw(server, { method = "GET", path = "/", headers = {}, body, auth = tr
   return new Promise((resolve, reject) => {
     const req = httpRequest({
       host: "127.0.0.1", port, method, path,
-      headers: { host: `127.0.0.1:${port}`, ...(auth ? { "x-tdk-token": TOKEN } : {}), ...headers },
+      headers: { host: `127.0.0.1:${port}`, ...(auth ? { "x-flisk-token": TOKEN } : {}), ...headers },
     }, (res) => {
       const chunks = [];
       res.on("data", (chunk) => chunks.push(chunk));
@@ -112,9 +112,9 @@ describe("HTTP request abuse", () => {
     const { server } = await boot();
     for (const path of ["/api/cli", "/api/projects", "/api/logs?project=a&resource=x"]) {
       assert.equal((await raw(server, { path, auth: false })).status, 403, path);
-      assert.equal((await raw(server, { path, headers: { "x-tdk-token": "wrong" } })).status, 403, path);
-      assert.equal((await raw(server, { path, headers: { "x-tdk-token": "" } })).status, 403, path);
-      assert.equal((await raw(server, { path, headers: { "x-tdk-token": "a".repeat(10_000) } })).status, 403, path);
+      assert.equal((await raw(server, { path, headers: { "x-flisk-token": "wrong" } })).status, 403, path);
+      assert.equal((await raw(server, { path, headers: { "x-flisk-token": "" } })).status, 403, path);
+      assert.equal((await raw(server, { path, headers: { "x-flisk-token": "a".repeat(10_000) } })).status, 403, path);
     }
     await assertAlive(server);
   });
@@ -170,7 +170,7 @@ describe("HTTP request abuse", () => {
     for (let index = 0; index < 20; index += 1) {
       await new Promise((resolve) => {
         const socket = connect(port, "127.0.0.1", () => {
-          socket.write(`POST /api/actions HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nx-tdk-token: ${TOKEN}\r\nOrigin: http://127.0.0.1:${port}\r\nContent-Length: 500\r\n\r\n{"project":`);
+          socket.write(`POST /api/actions HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nx-flisk-token: ${TOKEN}\r\nOrigin: http://127.0.0.1:${port}\r\nContent-Length: 500\r\n\r\n{"project":`);
           socket.destroy();
           resolve();
         });
@@ -383,7 +383,7 @@ describe("CLI misbehaviour", () => {
 });
 
 describe("CLI self-update endpoint", () => {
-  it("runs `tdk upgrade --yes` without sudo and re-probes", async () => {
+  it("runs `flisk upgrade --yes` without sudo and re-probes", async () => {
     const calls = [];
     let probed = 0;
     const { server } = await boot({
@@ -617,7 +617,7 @@ describe("username masking", () => {
   });
 });
 
-describe("CRUD actions through the TDK CLI", () => {
+describe("CRUD actions through the Flisk CLI", () => {
   const record = () => {
     const calls = [];
     return { calls, runCommand: async (project, args) => { calls.push({ root: project.root, args }); return { status: 0, stdout: "done", stderr: "" }; } };
@@ -1220,8 +1220,8 @@ describe("project discovery edge cases", () => {
   });
 
   it("rejects relative or missing explicit project roots", () => {
-    assert.throws(() => resolveProjects(null, ["/definitely/missing"]), /Not a TDK project directory/);
-    assert.throws(() => resolveProjects(null, [""]), /Not a TDK project directory/);
+    assert.throws(() => resolveProjects(null, ["/definitely/missing"]), /Not a Flisk project directory/);
+    assert.throws(() => resolveProjects(null, [""]), /Not a Flisk project directory/);
   });
 
   it("skips unreadable directories without throwing", () => {

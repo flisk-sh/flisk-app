@@ -1,11 +1,11 @@
 {
-  "name": "@flisk-sh/tdk-app",
+  "name": "@flisk-sh/flisk-app",
   "version": "0.1.0",
-  "description": "Local desktop command center for TDK projects",
+  "description": "Local desktop command center for Flisk projects",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "tdk-app": "src/cli.js"
+    "flisk-app": "src/cli.js"
   },
   "scripts": {
     "start": "node src/cli.js",
