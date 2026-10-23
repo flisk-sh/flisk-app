@@ -52,14 +52,16 @@ const FLISK_INSPECT = (() => {
     ].join("\n");
   }
 
-  function doctorPrompt({ project, path, score, issues }) {
+  // `program` is the binary the app discovered (see cliProgram() in app.js), so the prompt
+  // names the command that actually ran — a legacy install still runs `tdk doctor`.
+  function doctorPrompt({ project, path, score, issues, program = "flisk" }) {
     const rank = { fail: 0, warning: 1 };
     const list = [...issues]
       .sort((left, right) => (rank[left.status] ?? 2) - (rank[right.status] ?? 2))
       .map((check) => `- [${check.status}] ${check.name}: ${redact(check.message)}${check.fix ? ` (suggested fix: ${redact(check.fix)})` : ""}`)
       .join("\n");
     return [
-      `These checks from \`flisk doctor\` failed or warned for the Flisk project "${project}" (${path}). Health score: ${score ?? "unknown"}/100.`,
+      `These checks from \`${program} doctor\` failed or warned for the Flisk project "${project}" (${path}). Health score: ${score ?? "unknown"}/100.`,
       "For each one, explain what it means, the likely cause and the fix. Start with the failures.",
       "",
       list,
