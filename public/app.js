@@ -59,7 +59,7 @@ function statusMarkup(value) {
 
 // On narrow windows the status dot sits on the symbol, because the status text is hidden there.
 function symbolMarkup(name, state = "") {
-  return `<span class="project-symbol" aria-hidden="true">${esc((name || "T").slice(0, 1).toUpperCase())}${state ? `<i class="state-dot ${state} row-dot"></i>` : ""}</span>`;
+  return `<span class="project-symbol" aria-hidden="true">${esc((name || "F").slice(0, 1).toUpperCase())}${state ? `<i class="state-dot ${state} row-dot"></i>` : ""}</span>`;
 }
 
 const ICONS = {
@@ -277,7 +277,7 @@ function renderOverview() {
     ${collapsible("summary", "Summary", `<div class="gauges">${overviewGauges(ready, resources)}</div>${tokenBarMarkup(sumTokens(projects.map((project) => project.tokens)), "Generated share (est.)")}`)}
     ${pinnedResourcesPanel()}
     <div id="notice" class="notice" role="status"></div>
-    ${visible.length ? collapsible("projects", "Projects", `<section class="project-table" aria-label="Flisk projects">${rows}</section>`, `${visible.length} shown`) : `<div class="empty"><span class="empty-icon" aria-hidden="true">⌕</span><strong>${projects.length ? "No matching projects" : "No Flisk projects found"}</strong><p>${projects.length ? "Try another project name or folder path." : "Flisk App searches common development folders. Add a location with --scan-root or initialize a project with ${cliProgram()} project."}</p></div>`}
+    ${visible.length ? collapsible("projects", "Projects", `<section class="project-table" aria-label="Flisk projects">${rows}</section>`, `${visible.length} shown`) : `<div class="empty"><span class="empty-icon" aria-hidden="true">⌕</span><strong>${projects.length ? "No matching projects" : "No Flisk projects found"}</strong><p>${projects.length ? "Try another project name or folder path." : "Flisk App searches common development folders. Add a location with --scan-root or initialize a project with ${esc(cliProgram())} project."}</p></div>`}
   </div>`;
 }
 
@@ -303,7 +303,7 @@ function renderDetail(project) {
   const ports = (project.ports || []).map((port) => conflictPorts.has(port.port)
     ? `<span class="port-chip conflict" title="Port conflict: another project also uses this port">⚠ ${esc(port.name)} · :${esc(port.port)}</span>`
     : `<span class="port-chip">${esc(port.name)} · :${esc(port.port)}</span>`).join("");
-  const conflictDetails = conflicts.length ? `<details class="conflicts" data-key="conflicts/${esc(project.id)}"${openDetails.has(`conflicts/${project.id}`) ? " open" : ""}><summary>${conflicts.length} configured port conflict${conflicts.length === 1 ? "" : "s"}</summary><div class="conflict-body">${conflicts.map((conflict) => `<div><div>Port ${esc(conflict.port)}</div><ul class="conflict-claimants">${(conflict.claimants || []).map((claimant) => `<li><span>${esc(typeof claimant === "string" ? claimant : claimant.label)}</span>${claimant && claimant.path ? `<code>${esc(claimant.path)}</code>` : ""}</li>`).join("")}</ul></div>`).join("")}</div></details>` : "";
+  const conflictDetails = conflicts.length ? `<details class="conflicts" data-key="conflicts/${esc(project.id)}"${openDetails.has(`conflicts/${project.id}`) ? " open" : ""}><summary>${conflicts.length} configured port conflict${conflicts.length === 1 ? "" : "s"}</summary><div class="conflict-body">${conflicts.map((conflict) => `<div><div>Port ${esc(conflict.port)}</div><ul class="conflict-claimants" role="list">${(conflict.claimants || []).map((claimant) => `<li><span>${esc(claimant.label)}</span>${claimant.path ? `<code>${esc(claimant.path)}</code>` : ""}</li>`).join("")}</ul></div>`).join("")}</div></details>` : "";
 
   const stackMarkup = stacks.map((key) => {
     const name = key === UNASSIGNED_KEY ? "Unassigned" : key.slice(STACK_KEY_PREFIX.length);
@@ -467,11 +467,11 @@ async function loadDoctors(force = false) {
 function doctorSection(project) {
   const result = doctors.get(project.id);
   const rerun = iconButton("doctor-refresh", "Run doctor again", { project: project.id });
-  if (!result) return collapsible("doctor", "Doctor", `<div class="doctor-box">Running ${cliProgram()} doctor…</div>`, rerun);
+  if (!result) return collapsible("doctor", "Doctor", `<div class="doctor-box">Running ${esc(cliProgram())} doctor…</div>`, rerun);
   if (result.error) return collapsible("doctor", "Doctor", `<div class="doctor-box"><div class="notice show error" role="alert">Doctor could not finish: ${esc(result.error)}</div></div>`, rerun);
   const issues = result.checks.filter((check) => check.status === "fail" || check.status === "warning");
-  const list = issues.length ? issues.map((check) => `<div class="doctor-item ${check.status}"><strong>${esc(check.name)}</strong><span>${esc(check.message)}</span>${check.fix ? `<div class="fix-row"><code>${esc(check.fix)}</code><button class="link-btn copy-btn" type="button" data-copy="${esc(check.fix)}">${btnIcon("copy")}Copy</button></div>` : ""}</div>`).join("") : result.total ? `<div class="doctor-item pass"><strong>All ${result.total} checks passed</strong></div>` : `<div class="doctor-item"><strong>No checks ran</strong><span>${cliProgram()} doctor returned no results. Run it again, or check the CLI version.</span></div>`;
-  const ask = issues.length ? inspectRow(FLISK_INSPECT.doctorPrompt({ project: project.name, path: project.path, score: result.score, issues })) : "";
+  const list = issues.length ? issues.map((check) => `<div class="doctor-item ${check.status}"><strong>${esc(check.name)}</strong><span>${esc(check.message)}</span>${check.fix ? `<div class="fix-row"><code>${esc(check.fix)}</code><button class="link-btn copy-btn" type="button" data-copy="${esc(check.fix)}">${btnIcon("copy")}Copy</button></div>` : ""}</div>`).join("") : result.total ? `<div class="doctor-item pass"><strong>All ${result.total} checks passed</strong></div>` : `<div class="doctor-item"><strong>No checks ran</strong><span>${esc(cliProgram())} doctor returned no results. Run it again, or check the CLI version.</span></div>`;
+  const ask = issues.length ? inspectRow(FLISK_INSPECT.doctorPrompt({ project: project.name, path: project.path, score: result.score, issues, program: cliProgram() })) : "";
   return collapsible("doctor", "Doctor", `<div class="doctor-box"><div class="doctor-summary">${scoreMarkup(project, 84)}<div class="doctor-meta"><strong>${result.score ?? "—"} / 100</strong>${stackedBar(result)}<div class="legend"><span><i class="pass"></i>${result.passed} passed</span><span><i class="warning"></i>${result.warnings} warnings</span><span><i class="fail"></i>${result.failed} failed</span></div></div></div>${list}${ask}</div>`, rerun);
 }
 
