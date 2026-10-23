@@ -123,7 +123,11 @@ describe("HTTP request abuse", () => {
     const { server } = await boot();
     assert.equal((await raw(server, { path: "/", auth: false })).status, 404);
     assert.equal((await raw(server, { path: "/?token=nope", auth: false })).status, 404);
-    assert.equal((await raw(server, { path: `/?token=${TOKEN}`, auth: false })).status, 200);
+    const page = await raw(server, { path: `/?token=${TOKEN}`, auth: false });
+    assert.equal(page.status, 200);
+    assert.ok(page.text.includes(TOKEN), "the session token is embedded in the served page");
+    assert.ok(!page.text.includes("__FLISK_CENTER_TOKEN__"), "the placeholder is replaced");
+    assert.match(page.text, /meta name="flisk-token"/);
     assert.equal((await raw(server, { path: "/?token=%E0%A4%A", auth: false })).status, 404);
     assert.equal((await raw(server, { path: "/?token=a&token=b", auth: false })).status, 404);
   });
@@ -1026,6 +1030,47 @@ describe("persistent UI state (pins, hidden, collapsed)", () => {
     assert.equal(writeAppState({ hidden: ["a"] }, path), true);
     assert.deepEqual(readdirSync(dir), ["state.json"], "no temp files left behind");
     assert.equal(writeAppState({}, "/definitely/not/writable/state.json"), false);
+  });
+
+  it("migrates the legacy state file when the default state path is missing", () => {
+    const dir = tempDir();
+    const legacyFile = join(dir, "pre-rename-state.json");
+    writeFileSync(legacyFile, JSON.stringify({ hidden: ["old-pin"], knownRoots: ["/roots/shop"] }));
+    const defaultFile = join(dir, "flisk-app-state.json"); // deliberately not written
+    const saved = process.env.FLISK_APP_STATE;
+    process.env.FLISK_APP_STATE = defaultFile;
+    try {
+      const state = readAppState(defaultFile, { legacy: [legacyFile] });
+      assert.deepEqual(state.hidden, ["old-pin"]);
+      assert.deepEqual(state.knownRoots, ["/roots/shop"]);
+    } finally {
+      if (saved === undefined) delete process.env.FLISK_APP_STATE;
+      else process.env.FLISK_APP_STATE = saved;
+    }
+  });
+
+  it("never migrates the legacy file into an explicit custom state path", () => {
+    const dir = tempDir();
+    const legacyFile = join(dir, "pre-rename-state.json");
+    writeFileSync(legacyFile, JSON.stringify({ hidden: ["old-pin"] }));
+    const state = readAppState(join(dir, "custom-state.json"), { legacy: [legacyFile] });
+    assert.deepEqual(state, normalizeState(null));
+  });
+
+  it("does not resurrect the legacy file when the default state file is corrupt", () => {
+    const dir = tempDir();
+    const legacyFile = join(dir, "pre-rename-state.json");
+    writeFileSync(legacyFile, JSON.stringify({ hidden: ["old-pin"] }));
+    const defaultFile = join(dir, "flisk-app-state.json");
+    writeFileSync(defaultFile, "{corrupt");
+    const saved = process.env.FLISK_APP_STATE;
+    process.env.FLISK_APP_STATE = defaultFile;
+    try {
+      assert.deepEqual(readAppState(defaultFile, { legacy: [legacyFile] }), normalizeState(null));
+    } finally {
+      if (saved === undefined) delete process.env.FLISK_APP_STATE;
+      else process.env.FLISK_APP_STATE = saved;
+    }
   });
 });
 

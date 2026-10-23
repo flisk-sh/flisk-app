@@ -266,22 +266,26 @@ export function normalizeState(raw) {
   };
 }
 
-export function readAppState(path) {
+export function readAppState(path, { legacy = legacyStatePaths() } = {}) {
   const target = path ?? defaultStatePath();
+  let missing = false;
   try {
     return normalizeState(JSON.parse(readFileSync(target, "utf8")));
-  } catch {
-    // Fall back to the pre-rename file so the first launch after the rename keeps the user's layout.
-    // An explicit path that does not exist is simply empty.
-    if (!path) {
-      for (const legacy of legacyStatePaths()) {
-        try {
-          return normalizeState(JSON.parse(readFileSync(legacy, "utf8")));
-        } catch {}
-      }
-    }
-    return normalizeState(null);
+  } catch (error) {
+    missing = error?.code === "ENOENT";
   }
+  // Migrate the pre-rename file only when the default location has no file AT ALL. A corrupt
+  // (but existing) state file must fall through to empty state, not silently resurrect stale
+  // pre-rename pins/hidden/knownRoots that the next write would cement. Production callers pass
+  // defaultStatePath() itself (src/cli.js) or null; an explicit custom path never migrates.
+  if (missing && (path == null || path === defaultStatePath())) {
+    for (const candidate of legacy) {
+      try {
+        return normalizeState(JSON.parse(readFileSync(candidate, "utf8")));
+      } catch {}
+    }
+  }
+  return normalizeState(null);
 }
 
 // Write to a temp file and rename so a crash never leaves a half-written state file.
@@ -510,27 +514,39 @@ export function cliLabel(program) {
 export async function probeCli(execute, cwd = process.cwd()) {
   const probe = { root: cwd };
   const base = { minVersion: MIN_CLI_VERSION, installUrl: INSTALL_URL, version: null };
-  // A machine can have stale CLI copies earlier on PATH. Try installed
-  // candidates until one answers, then use that same binary for all commands.
+  // A machine can have stale CLI copies earlier on PATH. Try installed candidates until
+  // one answers --version AND supports the lifecycle commands, so a half-broken install
+  // cannot shadow a capable one further down the list (the flisk-first ordering makes
+  // that a cross-name possibility). When nothing is fully capable, the first
+  // version-answering candidate is still the CLI used for status, logs and updates.
   const override = cliBinaryOverride();
   const candidates = override ? [override] : cliBinaryCandidates();
   let binary = candidates[0] ?? CLI_FALLBACK_NAME;
   let versionResult = { status: null, stdout: "", stderr: "" };
+  let helps = [];
+  let accepted = null;
   for (const candidate of candidates.length ? candidates : [binary]) {
     const result = await execute(probe, ["--version"], { binary: candidate, timeoutMs: 10_000 });
-    if (result.status === 0) {
-      binary = candidate;
+    if (result.status !== 0) {
       versionResult = result;
-      selectedCliBinary = candidate;
+      continue;
+    }
+    const candidateHelps = await Promise.all(LIFECYCLE_COMMANDS.map((command) =>
+      execute(probe, [command, "--help"], { binary: candidate, timeoutMs: 10_000 }),
+    ));
+    const entry = { candidate, result, helps: candidateHelps };
+    accepted ??= entry;
+    if (LIFECYCLE_COMMANDS.every((command, index) => supportsLifecycleCommand(candidateHelps[index], command))) {
+      accepted = entry;
       break;
     }
-    versionResult = result;
   }
-  const helps = versionResult.status === 0
-    ? await Promise.all(LIFECYCLE_COMMANDS.map((command) =>
-      execute(probe, [command, "--help"], { binary, timeoutMs: 10_000 }),
-    ))
-    : [];
+  if (accepted) {
+    binary = accepted.candidate;
+    versionResult = accepted.result;
+    helps = accepted.helps;
+    selectedCliBinary = accepted.candidate;
+  }
   const program = helps.map((help) => usageOf(help)).find(Boolean)?.program ?? basename(binary);
   const label = cliLabel(program);
   if (versionResult.status !== 0) {
@@ -808,8 +824,13 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
     if (entry) entry.at = 0;
   };
   if (prewarm) {
-    void Promise.resolve(projectsReady).then(() => { for (const project of projects) void refreshStatus(project); });
-    void Promise.resolve().then(() => cliCapability());
+    // Warm the probe immediately, but start the status wave only after it settles: the probe
+    // pins the capable binary (selectedCliBinary), and a broken `flisk` earlier on PATH would
+    // otherwise shadow a working `tdk` for the whole first wave.
+    const warmed = Promise.resolve().then(() => cliCapability());
+    void Promise.resolve(projectsReady).then(() => warmed).then(() => {
+      for (const project of projects) void refreshStatus(project);
+    });
   }
   const doctorCache = new Map();
   const DOCTOR_TTL_MS = 120_000;
@@ -834,15 +855,29 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
     return entry.promise;
   };
   // Cache only a positive result so installing or updating the CLI is picked up on the next load.
+  // Concurrent callers (the 7s poll, the 900ms pending poll, actions, the prewarm wave) share one
+  // in-flight probe instead of each spawning its own multi-candidate scan against a broken CLI.
+  let probing = null;
   const cliCapability = async () => {
     if (capability?.lifecycle) return capability;
-    const result = await probe(runCommand).catch((error) => ({
-      state: "failed", lifecycle: false, version: null, minVersion: MIN_CLI_VERSION, installUrl: INSTALL_URL,
-      program: CLI_FALLBACK_NAME, label: cliLabel(CLI_FALLBACK_NAME),
-      message: `The ${cliLabel(CLI_FALLBACK_NAME)} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
-    }));
-    capability = result;
-    return result;
+    if (!probing) {
+      const attempt = probe(runCommand)
+        .catch((error) => ({
+          state: "failed", lifecycle: false, version: null, minVersion: MIN_CLI_VERSION, installUrl: INSTALL_URL,
+          program: CLI_FALLBACK_NAME, label: cliLabel(CLI_FALLBACK_NAME),
+          message: `The ${cliLabel(CLI_FALLBACK_NAME)} could not be checked: ${error instanceof Error ? error.message : String(error)}`,
+        }))
+        .then((result) => {
+          // A probe superseded by a CLI update must not clobber the fresh result.
+          if (probing === attempt) capability = result;
+          return result;
+        })
+        .finally(() => {
+          if (probing === attempt) probing = null;
+        });
+      probing = attempt;
+    }
+    return probing;
   };
   const server = createServer((request, response) => {
     void (async () => {
@@ -887,7 +922,10 @@ export function startAppServer({ projects, projectsReady = Promise.resolve(), pr
           if (result.status !== 0 && /unknown option.*--all|unknown option.*'--all'/i.test(`${result.stdout}\n${result.stderr}`)) {
             result = await runCommand({ root: homedir() }, ["upgrade", "--yes"], { timeoutMs: 300_000 });
           }
+          // Drop the cached result AND any in-flight probe so the re-probe below cannot join
+          // a pre-update attempt and report the old version.
           capability = null;
+          probing = null;
           const cli = await cliCapability();
           return sendJson(response, 200, { ok: result.status === 0, output: `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim().slice(-2000), cli });
         } finally {

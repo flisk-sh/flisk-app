@@ -77,6 +77,43 @@ describe("CLI capability probe", () => {
     await probeCli(execute);
     assert(calls.every((args) => args.includes("--version") || args.includes("--help")));
   });
+
+  it("falls through a version-answering but incapable CLI to a capable one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "flisk-app-probe-"));
+    tempDirs.push(dir);
+    writeFileSync(join(dir, "flisk"), "");
+    writeFileSync(join(dir, "tdk"), "");
+    const savedPath = process.env.PATH;
+    const savedFliskBin = process.env.FLISK_BIN;
+    const savedTdkBin = process.env.TDK_BIN;
+    process.env.PATH = dir;
+    delete process.env.FLISK_BIN;
+    delete process.env.TDK_BIN;
+    try {
+      const probed = [];
+      const result = await probeCli(async (_probe, args, options = {}) => {
+        const binary = options.binary ?? "";
+        probed.push(binary);
+        const capable = binary.endsWith("/tdk");
+        if (args[0] === "--version") return { status: 0, stdout: "1.3.204\n", stderr: "" };
+        const program = capable ? "tdk" : "flisk";
+        const usage = capable ? `Usage: ${program} ${args[0]} [options]\n` : `Usage: ${program} [options] [command]\n`;
+        return { status: 0, stdout: usage, stderr: "" };
+      });
+      assert.equal(result.state, "supported");
+      assert.equal(result.lifecycle, true);
+      assert.equal(result.version, "1.3.204");
+      assert.equal(result.program, "tdk");
+      assert.ok(probed.some((binary) => binary.endsWith("/flisk")), "the incapable flisk was probed first");
+      assert.ok(probed.some((binary) => binary.endsWith("/tdk")), "the capable tdk was probed");
+    } finally {
+      process.env.PATH = savedPath;
+      if (savedFliskBin === undefined) delete process.env.FLISK_BIN;
+      else process.env.FLISK_BIN = savedFliskBin;
+      if (savedTdkBin === undefined) delete process.env.TDK_BIN;
+      else process.env.TDK_BIN = savedTdkBin;
+    }
+  });
 });
 
 describe("CLI binary discovery", () => {
@@ -103,6 +140,10 @@ describe("CLI binary discovery", () => {
   it("honours an explicit FLISK_BIN path over anything on PATH", () => {
     assert.equal(resolveTdkBinary({ FLISK_BIN: "/opt/custom/flisk", PATH: "/usr/bin" }), "/opt/custom/flisk");
     assert.equal(resolveTdkBinary({ TDK_BIN: "/opt/custom/tdk", PATH: "/usr/bin" }), "/opt/custom/tdk");
+  });
+
+  it("prefers FLISK_BIN over TDK_BIN when both are set", () => {
+    assert.equal(resolveTdkBinary({ FLISK_BIN: "/opt/new/flisk", TDK_BIN: "/opt/old/tdk", PATH: "" }), "/opt/new/flisk");
   });
 });
 
