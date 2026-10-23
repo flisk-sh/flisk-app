@@ -59,6 +59,13 @@ describe("inspect prompts", () => {
     assert.ok(prompt.indexOf("[fail] Docker") < prompt.indexOf("[warning] Ports"));
     assert.match(prompt, /Health score: 72\/100/);
     assert.match(prompt, /suggested fix: open Docker Desktop/);
+    assert.match(prompt, /`flisk doctor`/, "defaults to the flisk command");
+  });
+
+  it("names the binary that produced the checks", () => {
+    const prompt = inspect.doctorPrompt({ project: "shop", path: "~/shop", score: null, issues: [], program: "tdk" });
+    assert.match(prompt, /`tdk doctor`/);
+    assert.doesNotMatch(prompt, /`flisk doctor`/);
   });
 
   it("links the same three services as the PR review buttons, with the prompt encoded", () => {
